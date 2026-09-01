@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>应用设置 - model2mc</title>
+  <link rel="icon" type="image/png" href="/icon.png">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1118;
+      --panel: #151b25;
+      --panel-2: #0f141d;
+      --border: #2a3240;
+      --text: #e8edf7;
+      --muted: #97a3b8;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --red: #f85149;
+      --shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+    }
+
+    html[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f2f5f9;
+      --panel: #ffffff;
+      --panel-2: #edf1f6;
+      --border: #d4dbe6;
+      --text: #1c2434;
+      --muted: #5c6a80;
+      --accent: #1f6feb;
+      --green: #1a7f37;
+      --red: #d1242f;
+      --shadow: 0 14px 32px rgba(28, 40, 60, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    header {
+      padding: 24px 28px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+    }
+
+    .muted {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding-top: 4px;
+    }
+
+    .btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: border-color 0.15s, background 0.15s;
+      white-space: nowrap;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+    }
+
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #0d1118;
+      font-weight: 600;
+    }
+
+    .btn.subtle {
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .btn.subtle:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .btn.danger {
+      color: var(--red);
+    }
+
+    .btn.danger:hover {
+      border-color: var(--red);
+    }
+
+    /* 主题切换：固定正方形，图标居中 */
+    .theme-toggle-btn {
+      width: 30px;
+      padding: 8px 0;
+      flex: none;
+    }
+
+    .theme-toggle-btn svg {
+      display: block;
+      margin: 0;
+    }
+
+    .main {
+      padding: 24px 28px 32px;
+      max-width: 860px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      margin: 0 0 4px;
+      font-size: 17px;
+    }
+
+    .card .desc {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .info-item {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+
+    .info-item .label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .info-item .value {
+      font-size: 15px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .value.source-file {
+      color: var(--green);
+    }
+
+    .value.source-default {
+      color: var(--muted);
+    }
+
+    .field-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .field-row label {
+      font-size: 13px;
+      color: var(--text);
+      min-width: 92px;
+    }
+
+    .field-row input[type="number"] {
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      width: 160px;
+      font-size: 13px;
+    }
+
+    .field-row .unit {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+      margin: 0 0 16px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .status {
+      min-height: 18px;
+      margin-top: 14px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .status.ok {
+      color: var(--green);
+    }
+
+    .status.error {
+      color: var(--red);
+    }
+
+    .status.info {
+      color: var(--muted);
+    }
+
+    .path-text {
+      word-break: break-all;
+      font-size: 12px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body class="mode-config">
+<div class="shell">
+  <header>
+    <div>
+      <h1>应用设置</h1>
+      <p class="muted">堆内存等运行级配置，保存到运行目录下的 config.json。文件存在则加载其中的配置项，否则使用默认参数。</p>
+    </div>
+    <div class="header-actions">
+      <a href="/" class="btn">首页</a>
+      <a href="/palette.html" class="btn">方块颜色映射</a>
+      <button id="theme-toggle" type="button" class="btn theme-toggle-btn" title="切换白天 / 夜间模式"></button>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="card">
+      <h2>堆内存配置</h2>
+      <p class="desc">体素化大模型占用内存大，改小容易「内存不足」报错。修改后需要重启进程才生效。</p>
+
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="label">物理内存</div>
+          <div class="value" id="infoPhysical">-</div>
+        </div>
+        <div class="info-item">
+          <div class="label">当前 JVM 堆上限</div>
+          <div class="value" id="infoCurrent">-</div>
+        </div>
+        <div class="info-item">
+          <div class="label">生效配置来源</div>
+          <div class="value" id="infoSource">-</div>
+        </div>
+        <div class="info-item">
+          <div class="label">默认堆内存（未配置时）</div>
+          <div class="value" id="infoDefault">-</div>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <label for="heapMB">堆内存上限</label>
+        <input id="heapMB" type="number" min="1024" max="262144" step="256" placeholder="请输入 MB" autocomplete="off">
+        <span class="unit">MB（物理内存的 80%，通常 1024 ~ 262144）</span>
+      </div>
+      <p class="hint">建议 ≤ 物理内存的 80%。4060 高度左右的模型建议 11000MB 以上。</p>
+      <div class="path-text">配置文件：<span id="configPath">-</span></div>
+
+      <div class="actions" style="margin-top: 14px;">
+        <button id="btn-save" type="button" class="btn primary">保存配置</button>
+        <button id="btn-restart" type="button" class="btn danger" hidden>立即重启（生效）</button>
+      </div>
+
+      <div class="status" id="status"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+  // ==================== 主题 ====================
+  const ICON_SUN = '<svg width="15" height="15" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="9" r="3.4"/><path d="M9 2v2M9 14v2M2 9h2M14 9h2M3.9 3.9l1.5 1.5M12.6 12.6l1.5 1.5M14.1 3.9l-1.5 1.5M5.4 12.6l-1.5 1.5"/></svg>';
+  const ICON_MOON = '<svg width="15" height="15" viewBox="0 0 18 18" fill="currentColor"><path d="M14.7 11.2a6.3 6.3 0 0 1-7.9-7.9A6.3 6.3 0 1 0 14.7 11.2z"/></svg>';
+  let currentTheme = "dark";
+
+  function applyTheme(theme) {
+    currentTheme = theme === "light" ? "light" : "dark";
+    document.documentElement.dataset.theme = currentTheme;
+    const toggle = document.getElementById("theme-toggle");
+    toggle.innerHTML = currentTheme === "light" ? ICON_MOON : ICON_SUN;
+    toggle.title = currentTheme === "light" ? "切换到夜间模式" : "切换到白天模式";
+  }
+
+  function toggleTheme() {
+    const next = currentTheme === "dark" ? "light" : "dark";
+    try { localStorage.setItem("model2mc-theme", next); } catch (error) { /* 会话内生效 */ }
+    applyTheme(next);
+  }
+
+  try {
+    applyTheme(localStorage.getItem("model2mc-theme") || "dark");
+  } catch (error) {
+    applyTheme("dark");
+  }
+  document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
+
+  // ==================== 配置加载 / 保存 / 重启 ====================
+  const ui = {
+    heapMB: document.getElementById("heapMB"),
+    physical: document.getElementById("infoPhysical"),
+    current: document.getElementById("infoCurrent"),
+    source: document.getElementById("infoSource"),
+    defHeap: document.getElementById("infoDefault"),
+    path: document.getElementById("configPath"),
+    save: document.getElementById("btn-save"),
+    restart: document.getElementById("btn-restart"),
+    status: document.getElementById("status")
+  };
+
+  function setStatus(text, kind) {
+    ui.status.className = "status " + (kind || "info");
+    ui.status.textContent = text;
+  }
+
+  function fmtMB(mb) {
+    if (mb == null || mb <= 0) { return "-"; }
+    if (mb >= 1024) { return (mb / 1024).toFixed(1) + " GB"; }
+    return mb + " MB";
+  }
+
+  async function loadConfig() {
+    setStatus("加载配置中...", "info");
+    const data = await fetch("/api/app-config").then(r => r.json());
+    ui.heapMB.value = data.heapMB;
+    ui.heapMB.placeholder = "默认 " + data.defaultHeapMB + " MB";
+    ui.physical.textContent = fmtMB(data.physicalMB);
+    ui.current.textContent = fmtMB(data.currentHeapMB);
+    ui.defHeap.textContent = fmtMB(data.defaultHeapMB);
+    ui.path.textContent = data.configPath;
+    ui.source.textContent = data.source === "file" ? "config.json（已配置）" : "默认参数";
+    ui.source.className = "value " + (data.source === "file" ? "source-file" : "source-default");
+    ui.restart.hidden = true;
+    setStatus("", "");
+  }
+
+  async function saveConfig() {
+    const raw = String(ui.heapMB.value || "").trim();
+    if (!raw || !/^\d+$/.test(raw)) {
+      setStatus("请输入有效的堆内存数值（MB）", "error");
+      return;
+    }
+    setStatus("正在保存...", "info");
+    ui.save.disabled = true;
+    try {
+      const params = new URLSearchParams({ heapMB: raw });
+      const res = await fetch("/api/app-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString()
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setStatus(data.error || "保存失败（HTTP " + res.status + "）", "error");
+        return;
+      }
+      setStatus("已保存到 config.json，重启后生效。", "ok");
+      ui.restart.hidden = false;
+    } catch (error) {
+      setStatus("保存失败：" + error.message, "error");
+    } finally {
+      ui.save.disabled = false;
+    }
+  }
+
+  async function restartServer() {
+    setStatus("正在重启服务（约几秒），完成后自动刷新...", "info");
+    ui.restart.disabled = true;
+    ui.save.disabled = true;
+    try {
+      const res = await fetch("/api/restart", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStatus(data.error || "重启失败（HTTP " + res.status + "）", "error");
+        ui.restart.disabled = false;
+        ui.save.disabled = false;
+        return;
+      }
+    } catch (error) {
+      // 正常重启 = 连接突然中断，当作成功继续轮询
+    }
+    // 轮询新进程：最多等 30 秒
+    for (let i = 0; i < 60; i++) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      try {
+        const probe = await fetch("/api/app-config", { cache: "no-store" });
+        if (probe.ok) {
+          await loadConfig();
+          setStatus("重启完成，新配置已生效。", "ok");
+          ui.restart.disabled = false;
+          ui.save.disabled = false;
+          return;
+        }
+      } catch (ignored) {
+        // 旧进程还没退出，继续等
+      }
+    }
+    setStatus("等待新进程超时，请手动刷新页面确认。", "error");
+    ui.restart.disabled = false;
+    ui.save.disabled = false;
+  }
+
+  ui.save.addEventListener("click", saveConfig);
+  ui.restart.addEventListener("click", restartServer);
+  loadConfig().catch(error => setStatus("加载失败：" + error.message, "error"));
+</script>
+</body>
+</html>

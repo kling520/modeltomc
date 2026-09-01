@@ -1,0 +1,5491 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>model2mc Web UI</title>
+  <link rel="icon" type="image/png" href="/icon.png">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1118;
+      --panel: #151b25;
+      --panel-2: #0f141d;
+      --border: #2a3240;
+      --text: #e8edf7;
+      --muted: #97a3b8;
+      --accent: #58a6ff;
+      --shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+    
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .shell {
+      /* zoom 按 --ui-zoom 整体缩小主界面；min-height 除回缩放比，
+         保证日志区仍恰好填满视口（100vh 在 zoom 子树里会被再乘 0.85） */
+      zoom: var(--ui-zoom);
+      min-height: calc(100vh / var(--ui-zoom));
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+    }
+
+    header {
+      padding: 14px 20px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding-top: 4px;
+    }
+
+    .header-btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      text-decoration: none;
+      transition: border-color 0.15s, background 0.15s;
+      white-space: nowrap;
+    }
+
+    .header-btn:hover {
+      border-color: var(--accent);
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 20px;
+    }
+
+    .muted {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 12px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(520px, 1.15fr) minmax(420px, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-areas:
+        "files params"
+        "log log";
+    }
+
+    .panel {
+      padding: 14px 20px;
+      border-right: 1px solid var(--border);
+    }
+
+    .panel:last-child {
+      border-right: none;
+    }
+
+    .files-panel {
+      grid-area: files;
+    }
+
+    .params-panel {
+      grid-area: params;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .log-panel {
+      border-top: 1px solid var(--border);
+      border-right: none;
+      grid-area: log;
+      padding-top: 18px;
+      min-height: 0;
+    }
+
+    /* 预览已改为悬浮窗，日志区撑满剩余视口高度，页面更紧凑 */
+    .log-panel .card {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .log-panel textarea {
+      flex: 1;
+      min-height: 220px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .card + .card {
+      margin-top: 12px;
+    }
+
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+
+    .model-card {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+
+    .model-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .model-card-head strong {
+      font-size: 13px;
+    }
+
+    .model-card-head button {
+      min-width: 0;
+      padding: 3px 10px;
+      font-size: 12px;
+      background: #3a2430;
+      border: 1px solid #5a3a44;
+    }
+
+    .model-card-head .copy-btn {
+      background: #1e3a5f;
+      border: 1px solid #2d5a8f;
+    }
+
+    .model-card-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .model-card .param-grid {
+      margin-top: 8px;
+    }
+
+    .model-card.collapsed .model-card-body {
+      display: none;
+    }
+
+    .model-card-head .card-toggle {
+      padding: 3px 9px;
+      line-height: 1;
+      font-size: 11px;
+    }
+
+    /* 预览里点选中的模型：左侧配置卡片高亮提示 */
+    .model-card.selected {
+      border-color: #58a6ff;
+      box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.55);
+    }
+
+    .add-model-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .add-model-row button {
+      min-width: 0;
+      padding: 5px 14px;
+    }
+
+    .add-model-row .hint {
+      margin: 0;
+    }
+
+    .copy-spacing-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .copy-spacing-row label {
+      white-space: nowrap;
+    }
+
+    .copy-spacing-row input {
+      min-width: 0;
+      width: 96px;
+    }
+
+    .copy-spacing-row .hint {
+      margin: 0;
+    }
+
+    .field-grid,
+    .param-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .param-grid {
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+    }
+
+    .field {
+      display: grid;
+      gap: 3px;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+      font: inherit;
+      font-size: 13px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 7px 9px;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: 1px solid var(--accent);
+      border-color: var(--accent);
+    }
+
+    button {
+      cursor: pointer;
+      background: linear-gradient(180deg, #3f8ef7, #2d73d2);
+      border: none;
+      font-weight: 600;
+      min-width: 88px;
+    }
+
+    button.secondary {
+      background: #20283a;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+      margin: 8px 0 0;
+    }
+
+    .status-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .pill {
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    /* 操作行按钮按内容收缩，保证重置/生成映射/编辑映射/刷新预览/写入一行放下 */
+    .actions button {
+      min-width: 0;
+      padding-left: 8px;
+      padding-right: 8px;
+      white-space: nowrap;
+    }
+
+    .preview-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .preview-summary {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .preview-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .preview-toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .preview-toolbar-actions button {
+      min-width: 0;
+      padding: 5px 12px;
+    }
+
+    /* 轴线模式激活态：高亮当前模式按钮 */
+    .preview-toolbar-actions button.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .preview-toolbar-actions button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .preview-stage:fullscreen,
+    .preview-stage:-webkit-full-screen {
+      width: 100vw;
+      height: 100vh;
+      border-radius: 0;
+      border: none;
+      background: #0a0e15;
+    }
+
+    .preview-toggle input {
+      accent-color: var(--accent);
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+
+    .preview-progress {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .preview-progress[hidden] {
+      display: none;
+    }
+
+    .preview-progress-bar {
+      flex: 1;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .preview-progress-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #2d73d2, #58a6ff);
+      transition: width 0.3s ease;
+    }
+
+    .preview-progress.indeterminate .preview-progress-fill {
+      width: 35%;
+      animation: progress-slide 1.2s ease-in-out infinite;
+    }
+
+    @keyframes progress-slide {
+      0% {
+        margin-left: -35%;
+      }
+      100% {
+        margin-left: 100%;
+      }
+    }
+
+    .preview-progress-text {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .preview-stage {
+      position: relative;
+      height: 720px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background:
+        radial-gradient(circle at top, rgba(88, 166, 255, 0.12), transparent 35%),
+        linear-gradient(180deg, #0d131d, #0a0e15 80%);
+    }
+
+    .preview-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 14px;
+      letter-spacing: 0.03em;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .preview-stage canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .header-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* 3D 预览悬浮窗：独立于页面布局浮在右下角，可用顶栏按钮或 × 开关 */
+    .preview-popover {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      width: min(720px, calc(100vw - 40px));
+      /* 默认高度上限由 JS 按「刷新预览」按钮行底边测量后写入 --preview-max-h，
+         保证悬浮窗不遮住那排操作按钮。未设置时退回适中的 calc(100vh - 260px)，
+         避免首帧先按接近全屏的高度渲染、随后被 JS 改小造成「先占满再缩小」的跳动。
+         0.8 倍缩放：不用 zoom 属性（fixed 元素加 zoom 后 getBoundingClientRect
+         返回未缩放值，拖动/缩放手柄的坐标会漂移），直接按尺寸折算 */
+      height: min(448px, var(--preview-max-h, calc(100vh - 260px)));
+      display: grid;
+      grid-template-rows: auto auto auto minmax(0, 1fr);
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(15, 20, 29, 0.98);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      z-index: 39;
+    }
+
+    .preview-popover[hidden] {
+      display: none;
+    }
+
+    .preview-popover-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .preview-popover-head h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .preview-popover-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .preview-popover .preview-stage {
+      height: 100%;
+      min-height: 260px;
+    }
+
+    /* 四向缩放把手：四条边 + 四角各一个热区，悬浮窗拖动/缩放均基于显式 left/top 定位 */
+    .pv-resize {
+      position: absolute;
+      z-index: 5;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .pv-resize-n {
+      top: -5px;
+      left: 10px;
+      right: 10px;
+      height: 10px;
+      cursor: ns-resize;
+    }
+
+    .pv-resize-s {
+      bottom: -5px;
+      left: 10px;
+      right: 10px;
+      height: 10px;
+      cursor: ns-resize;
+    }
+
+    .pv-resize-e {
+      right: -5px;
+      top: 10px;
+      bottom: 10px;
+      width: 10px;
+      cursor: ew-resize;
+    }
+
+    .pv-resize-w {
+      left: -5px;
+      top: 10px;
+      bottom: 10px;
+      width: 10px;
+      cursor: ew-resize;
+    }
+
+    .pv-resize-ne {
+      top: -5px;
+      right: -5px;
+      width: 14px;
+      height: 14px;
+      cursor: nesw-resize;
+    }
+
+    .pv-resize-nw {
+      top: -5px;
+      left: -5px;
+      width: 14px;
+      height: 14px;
+      cursor: nwse-resize;
+    }
+
+    .pv-resize-se {
+      bottom: -5px;
+      right: -5px;
+      width: 14px;
+      height: 14px;
+      cursor: nwse-resize;
+    }
+
+    .pv-resize-sw {
+      bottom: -5px;
+      left: -5px;
+      width: 14px;
+      height: 14px;
+      cursor: nesw-resize;
+    }
+
+    .preview-popover:hover .pv-resize {
+      background: rgba(88, 166, 255, 0.18);
+      border-radius: 6px;
+    }
+
+    /* 缩小态：只保留标题行的小悬浮条，宽度随内容收缩，不再遮挡后面内容。
+     fixed 元素同时有 left/right 时 width:auto 会被两端撑成整宽，必须把对向 right/bottom 也置为 auto */
+    .preview-popover.is-minimized {
+      width: auto !important;
+      height: auto !important;
+      right: auto !important;
+      bottom: auto !important;
+      min-width: 0;
+      grid-template-rows: auto;
+      gap: 0;
+    }
+
+    .preview-popover.is-minimized .preview-toolbar,
+    .preview-popover.is-minimized .preview-progress,
+    .preview-popover.is-minimized .preview-stage,
+    .preview-popover.is-minimized .pv-resize {
+      display: none;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 160px;
+      resize: vertical;
+      line-height: 1.5;
+      font-family: Consolas, "Courier New", monospace;
+    }
+
+    @media (max-width: 1200px) {
+      .layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        grid-template-areas:
+          "files"
+          "params"
+          "log";
+      }
+
+      .panel {
+        border-right: none;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .param-grid {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+      }
+    }
+    .tabs {
+      display: inline-flex;
+      gap: 8px;
+      padding: 14px 20px 0;
+      border-bottom: 1px solid var(--border);
+      background: transparent;
+    }
+
+    .tab {
+      appearance: none;
+      border: 1px solid var(--border);
+      border-bottom: none;
+      background: var(--panel);
+      color: var(--muted);
+      padding: 7px 20px;
+      border-radius: 8px 8px 0 0;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+
+    .tab:hover {
+      color: var(--text);
+    }
+
+    .tab.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--bg);
+    }
+
+    .mode-export .write-only {
+      display: none !important;
+    }
+
+    .mode-write .export-only {
+      display: none !important;
+    }
+
+    .palette-popover {
+      position: fixed;
+      top: 82px;
+      right: 20px;
+      width: min(560px, calc(100vw - 40px));
+      max-height: calc(100vh - 104px);
+      display: grid;
+      grid-template-rows: auto auto auto minmax(0, 1fr);
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(15, 20, 29, 0.98);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      z-index: 40;
+    }
+
+    .palette-popover[hidden] {
+      display: none;
+    }
+
+    .palette-popover-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .palette-popover-head h3 {
+      margin: 0 0 4px;
+      font-size: 15px;
+    }
+
+    .palette-popover-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .palette-popover-close {
+      min-width: 0;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      font-size: 18px;
+      line-height: 1;
+      border-radius: 999px;
+      background: #20283a;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .palette-popover-head-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    /* 缩小态：只剩一行标题 + 按钮 */
+    .palette-popover.is-minimized {
+      width: auto;
+      min-width: 230px;
+      max-width: calc(100vw - 40px);
+      max-height: none;
+      grid-template-rows: auto;
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+
+    .palette-popover.is-minimized .palette-popover-head p,
+    .palette-popover.is-minimized .palette-popover-toolbar,
+    .palette-popover.is-minimized .palette-popover-statusline,
+    .palette-popover.is-minimized .palette-popover-body {
+      display: none;
+    }
+
+    .palette-popover.is-minimized .palette-popover-head {
+      align-items: center;
+    }
+
+    .palette-popover.is-minimized .palette-popover-head h3 {
+      margin: 0;
+      font-size: 13px;
+    }
+
+    .palette-popover-toolbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .palette-popover-profile {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .palette-popover-status {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .palette-popover-status.error {
+      color: #ff8b8b;
+    }
+
+    /* 状态文本行：独立占一行，避免其长度变化影响 actions（含复选框）的布局 */
+    .palette-popover-statusline {
+      padding: 0 2px;
+      min-height: 18px;
+    }
+
+    .palette-popover-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .palette-popover-body {
+      min-height: 220px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 10px;
+    }
+
+    .palette-popover-empty {
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      padding: 36px 14px;
+    }
+
+    .palette-popover-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .palette-popover-row {
+      display: grid;
+      grid-template-columns: 44px 88px minmax(0, 1fr) 34px;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+
+    .generated-save-modal {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.45);
+      z-index: 50;
+    }
+
+    .generated-save-modal[hidden] {
+      display: none;
+    }
+
+    .generated-save-card {
+      width: min(520px, calc(100vw - 40px));
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(15, 20, 29, 0.98);
+      box-shadow: var(--shadow);
+    }
+
+    .generated-save-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .generated-save-head h3 {
+      margin: 0 0 4px;
+      font-size: 16px;
+    }
+
+    .generated-save-head p,
+    .generated-save-meta,
+    .generated-save-status {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .generated-save-status.error {
+      color: #ff8b8b;
+    }
+
+    .generated-save-input {
+      display: grid;
+      gap: 8px;
+    }
+
+    .generated-save-input input {
+      width: 100%;
+    }
+
+    .generated-save-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .palette-popover-row.is-jump-target {
+      border-color: rgba(88, 166, 255, 0.8);
+      box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.28);
+      background: rgba(88, 166, 255, 0.08);
+    }
+
+    .palette-popover-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+      overflow: hidden;
+      position: relative;
+      flex: none;
+    }
+
+    .palette-popover-icon img,
+    .palette-popover-icon span {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .palette-popover-icon img {
+      display: none;
+      object-fit: cover;
+      image-rendering: pixelated;
+    }
+
+    .palette-popover-icon.has-image img {
+      display: block;
+    }
+
+    .palette-popover-icon.has-image span {
+      display: none;
+    }
+
+    .palette-popover-color {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .palette-popover-color input[type="color"] {
+      appearance: none;
+      width: 34px;
+      height: 28px;
+      padding: 0;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      cursor: pointer;
+      flex: none;
+    }
+
+    .palette-popover-color input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 2px;
+    }
+
+    .palette-popover-color input[type="color"]::-webkit-color-swatch {
+      border: none;
+      border-radius: 4px;
+    }
+
+    .palette-popover-hex {
+      width: 48px;
+      min-width: 0;
+      padding: 6px 6px;
+      font-size: 11px;
+      font-family: Consolas, "Courier New", monospace;
+      color: var(--muted);
+    }
+
+    .palette-popover-block {
+      position: relative;
+      min-width: 0;
+    }
+
+    .palette-popover-block input {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .palette-popover-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .palette-popover-suggest {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      max-height: 220px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      z-index: 3;
+    }
+
+    .palette-popover-suggest[hidden] {
+      display: none;
+    }
+
+    .palette-popover-suggest-item {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      cursor: pointer;
+    }
+
+    .palette-popover-suggest-item:last-child {
+      border-bottom: none;
+    }
+
+    .palette-popover-suggest-item.active,
+    .palette-popover-suggest-item:hover {
+      background: rgba(88, 166, 255, 0.14);
+    }
+
+    .palette-popover-suggest-item strong {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .palette-popover-suggest-item span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .palette-popover-remove {
+      min-width: 0;
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border-radius: 999px;
+      background: #20283a;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .palette-popover-remove:hover {
+      color: #ff8b8b;
+      border-color: #ff8b8b;
+    }
+
+    /* 模型路径：输入框 + 浏览按钮横排 */
+    .path-input-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .path-input-row input {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .path-browse {
+      min-width: 0 !important;
+      padding: 7px 12px;
+      white-space: nowrap;
+      flex: none;
+    }
+
+    .path-browse svg {
+      vertical-align: -2px;
+      margin-right: 4px;
+    }
+
+    /* 文件选择弹窗 */
+    .file-picker-card {
+      width: min(720px, calc(100vw - 40px));
+    }
+
+    .file-picker-toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .file-picker-toolbar button {
+      min-width: 0;
+      padding: 6px 12px;
+    }
+
+    .file-picker-allfiles {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .file-picker-allfiles input {
+      accent-color: var(--accent);
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+
+    .file-picker-list {
+      max-height: 46vh;
+      min-height: 180px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel-2);
+      padding: 4px;
+    }
+
+    .file-picker-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .file-picker-item:hover {
+      background: rgba(88, 166, 255, 0.1);
+    }
+
+    .file-picker-item.selected {
+      background: rgba(88, 166, 255, 0.22);
+    }
+
+    .file-picker-dir {
+      color: var(--accent);
+    }
+
+    .file-picker-file {
+      color: var(--text);
+    }
+
+    .file-picker-icon {
+      width: 16px;
+      flex: none;
+      text-align: center;
+      opacity: 0.75;
+    }
+
+    .file-picker-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-picker-status {
+      color: var(--muted);
+      font-size: 12px;
+      min-height: 16px;
+    }
+
+    .file-picker-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    /* 文件选择弹窗：粘贴目录路径快速跳转 */
+    .file-picker-pathinput {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .file-picker-pathinput input {
+      flex: 1;
+      min-width: 0;
+      font-family: Consolas, "Microsoft YaHei", monospace;
+    }
+
+    .file-picker-pathinput button {
+      min-width: 0;
+      padding: 6px 12px;
+    }
+
+    /* 弹窗条目图标（SVG 常用图标，替代字符占位） */
+    .file-picker-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .file-picker-icon svg {
+      display: block;
+    }
+
+    .file-picker-file .file-picker-icon {
+      color: var(--muted);
+    }
+
+    .file-picker-toolbar button svg,
+    .header-btn svg {
+      vertical-align: -2px;
+      margin-right: 2px;
+    }
+
+    /* ===== 主题切换按钮：固定正方形，图标居中，不再用整行内边距撑宽 ===== */
+    .theme-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      min-width: 30px;
+      padding: 6px 0;
+      flex: none;
+    }
+
+    .theme-toggle-btn svg {
+      margin: 0;
+      display: block;
+    }
+
+    /* ===== 白天（浅色）模式：夜间维持现状不变，浅色覆盖暗色变量与少量硬编码颜色 ===== */
+    html[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f2f5f9;
+      --panel: #ffffff;
+      --panel-2: #e9eef5;
+      --border: #d4dbe6;
+      --text: #1c2434;
+      --muted: #5c6a80;
+      --shadow: 0 14px 32px rgba(28, 40, 60, 0.12);
+    }
+
+    html[data-theme="light"] .params-panel {
+      background: rgba(0, 0, 0, 0.02);
+    }
+
+    html[data-theme="light"] .pill {
+      background: rgba(0, 0, 0, 0.03);
+    }
+
+    html[data-theme="light"] .palette-popover,
+    html[data-theme="light"] .preview-popover,
+    html[data-theme="light"] .generated-save-card,
+    html[data-theme="light"] .file-picker-card,
+    html[data-theme="light"] .palette-popover-suggest {
+      background: rgba(255, 255, 255, 0.98);
+    }
+
+    html[data-theme="light"] .palette-popover-body,
+    html[data-theme="light"] .file-picker-list {
+      background: rgba(0, 0, 0, 0.02);
+    }
+
+    html[data-theme="light"] button {
+      background: linear-gradient(180deg, #2f80ed, #2466c8);
+      color: #ffffff;
+    }
+
+    html[data-theme="light"] button.secondary,
+    html[data-theme="light"] .header-btn,
+    html[data-theme="light"] .path-browse,
+    html[data-theme="light"] .palette-popover-close,
+    html[data-theme="light"] .tab {
+      background: #e8eef5;
+      color: var(--text);
+    }
+
+    html[data-theme="light"] .preview-stage {
+      background:
+        radial-gradient(circle at top, rgba(31, 111, 235, 0.1), transparent 35%),
+        linear-gradient(180deg, #e7edf6, #dde5ef 80%);
+    }
+
+    html[data-theme="light"] .preview-stage:fullscreen,
+    html[data-theme="light"] .preview-stage:-webkit-full-screen {
+      background: #eef2f7;
+    }
+
+    html[data-theme="light"] .model-card-head button {
+      background: #f6dcdf;
+      border-color: #e9b9c0;
+    }
+
+    html[data-theme="light"] .model-card-head .copy-btn {
+      background: #dbe9fb;
+      border-color: #a9c9f0;
+    }
+
+    html[data-theme="light"] .model-card.selected {
+      border-color: #1f6feb;
+      box-shadow: 0 0 0 1px rgba(31, 111, 235, 0.45);
+    }
+  </style>
+</head>
+<body class="mode-export">
+<div class="shell">
+  <header>
+    <div>
+      <h1>model2mc Web UI</h1>
+      <p class="muted">默认先带上 `model` 目录里的 OBJ、MTL、贴图。路径可手动填，也可以点每行右侧「浏览…」选文件。3D 预览有存档时会一起显示地图表面和建筑；没填存档目录时会直接只显示模型，方便先看位置和体量。</p>
+    </div>
+    <div class="header-actions">
+      <button id="preview-toggle-btn" type="button" class="header-btn active" title="打开 / 关闭 3D 预览悬浮窗">3D 预览</button>
+      <a href="/palette.html" class="header-btn">方块颜色映射</a>
+      <a href="/config.html" class="header-btn">设置</a>
+      <button id="theme-toggle" type="button" class="header-btn theme-toggle-btn" title="切换白天 / 夜间模式"></button>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button id="tab-write" type="button" class="tab">写入存档</button>
+    <button id="tab-export" type="button" class="tab active">导出投影</button>
+  </div>
+
+  <main class="layout">
+    <section class="panel files-panel">
+      <section class="card">
+        <h2>模型列表</h2>
+        <div class="copy-spacing-row write-only" title="复制模型时，新模型坐标 = 被复制模型坐标 + 该间距">
+          <label>复制间距</label>
+          <input id="copyDx" type="number" value="100" placeholder="X">
+          <input id="copyDy" type="number" value="0" placeholder="Y">
+          <input id="copyDz" type="number" value="100" placeholder="Z">
+          <p class="hint">每个卡片上的“复制”按此间距生成新模型</p>
+        </div>
+        <div id="model-list"></div>
+        <div class="add-model-row write-only">
+          <button id="add-model" type="button" class="secondary">添加模型</button>
+          <p class="hint">每个模型独立指定 OBJ / MTL / 贴图与放置坐标，预览与写入会一起处理。</p>
+        </div>
+        <div class="field-grid write-only" style="margin-top:14px">
+          <div class="field">
+            <label>存档目录</label>
+            <input id="world" placeholder="A:\mc\.minecraft\versions\26.2-Fabric\saves\新的世界">
+          </div>
+          <div class="field">
+            <label>维度</label>
+            <select id="dimension">
+              <option value="overworld">overworld</option>
+              <option value="nether">nether</option>
+              <option value="end">end</option>
+            </select>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="panel params-panel">
+      <section class="card">
+        <h2 id="params-title">体素与写入参数</h2>
+        <div class="param-grid">
+          <div class="field">
+            <label title="模型卡片里未单独填“目标高度”时使用该全局值">目标高度(默认)</label>
+            <input id="height" type="number">
+          </div>
+          <div class="field">
+            <label>最大边长</label>
+            <input id="maxDimension" type="number">
+          </div>
+          <div class="field">
+            <label>每格采样</label>
+            <input id="samplesPerVoxel" type="number" step="0.01">
+          </div>
+          <div class="field">
+            <label>三角最大采样</label>
+            <input id="maxTriangleSamples" type="number">
+          </div>
+          <div class="field write-only">
+            <label title="每个模型四周额外采样地表的地形宽度（模型相距远、区域过大时自动按列步进降采样）">地形预览范围</label>
+            <input id="previewPadding" type="number" min="0" step="1">
+          </div>
+          <div class="field write-only">
+            <label>写前备份 region</label>
+            <select id="backup">
+              <option value="true">是</option>
+              <option value="false">否</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>模型表面光源</label>
+            <select id="surfaceLight">
+              <option value="false">否</option>
+              <option value="true">是</option>
+            </select>
+          </div>
+          <div class="field">
+            <label title="体素化后清除孤立的杂色块：0=关，1=只清单点，2=同时清 1-2 格小簇（建筑模型推荐）">去杂强度</label>
+            <select id="denoise">
+              <option value="0" selected>关</option>
+              <option value="1">弱（清单点）</option>
+              <option value="2">强（清小块）</option>
+            </select>
+          </div>
+          <div class="field">
+            <label title="选择用于最近颜色匹配的映射文件；映射文件可基于默认文件或其他自定义文件复制创建">映射文件</label>
+            <select id="paletteProfile"></select>
+          </div>
+        </div>
+
+        <div class="field export-only" style="margin-top:12px">
+          <label>导出路径（.litematic 输出目录）</label>
+          <input id="exportDir" placeholder="">
+        </div>
+
+        <p class="hint write-only">放置坐标与朝向在左侧每个模型卡片里单独设置。参数自动存在浏览器缓存。预览只读世界，不会改存档。真正写入还是你点“开始写入”那一下；如果没填存档目录，预览会跳过地形，直接只显示模型。“地形预览范围”是每个模型四周额外采样地表的地形宽度，模型相距很远导致预览区域过大时，会自动按列步进降采样以保证流畅。“模型表面光源”开启时会在模型外侧铺一层 light[level=15]，让模型在暗处可见。点“生成模型方块映射”会弹出命名窗口，预览完成后把当前模型用到的方块写进该命名文件（同名文件保留你改过的颜色），并自动切换“映射文件”到它。导出 Litematica 投影也只做体素化并生成文件到项目 exports 目录，不会修改存档；文件内以模型合并后的最小角为原点。Axiom 可直接用 File → Import Schematic 导入 .litematic 投影。</p>
+        <p class="hint export-only">导出只做体素化并生成 .litematic 投影文件到上面的导出路径，不修改存档；文件内以模型合并后的最小角为原点。Axiom 可直接用 File → Import Schematic 导入。“模型表面光源”开启时，投影里也会在模型外侧铺一层 light[level=15]，方便在暗处定位。点“生成模型方块映射”会弹出命名窗口，预览完成后把当前模型用到的方块写进该命名文件（同名文件保留你改过的颜色），并自动切换“映射文件”到它。</p>
+
+        <div class="actions" id="action-row">
+          <button id="reset" type="button" class="secondary">重置参数</button>
+          <button id="generate-palette" type="button" class="secondary" title="把当前模型用到的方块生成为映射文件（可命名），完成后自动切换到它">生成模型方块映射</button>
+          <button id="edit-palette-popup" type="button" class="secondary">编辑当前映射</button>
+          <button id="preview" type="button" class="secondary">刷新预览</button>
+          <button id="run" type="button" class="write-only">开始写入</button>
+          <button id="export-litematic" type="button" class="secondary export-only" title="把转换结果导出为 Litematica 投影 .litematic 文件到上面的导出路径，不修改存档">导出投影</button>
+        </div>
+      </section>
+    </section>
+
+    <section class="panel log-panel">
+      <section class="card">
+        <div class="status-bar">
+          <span class="pill">运行状态: <strong id="running-state">待命</strong></span>
+          <span class="pill">后端: <strong id="status-text">未连接</strong></span>
+          <span class="pill">参数缓存: <strong id="cache-text">未恢复</strong></span>
+          <span class="pill">错误: <strong id="error-text">-</strong></span>
+        </div>
+        <h2>实时日志</h2>
+        <textarea id="log" readonly spellcheck="false"></textarea>
+      </section>
+    </section>
+  </main>
+</div>
+
+<!-- 3D 预览悬浮窗：默认展开；刷新预览完成后若无画面还会自动弹出；右上角 × 或顶栏「3D 预览」按钮均可开关 -->
+<section id="preview-popover" class="preview-popover">
+  <div class="preview-popover-head">
+    <h3>3D 预览</h3>
+    <div class="preview-popover-actions">
+      <button id="preview-popover-min" type="button" class="secondary palette-popover-close" title="缩小悬浮窗">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3.5 8h9"/></svg>
+      </button>
+      <button id="preview-popover-close" type="button" class="secondary palette-popover-close" title="关闭预览悬浮窗">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="preview-toolbar">
+    <div class="preview-summary" id="preview-summary">还没生成。点“刷新预览”后，会画出模型体块；写入模式填了存档目录时，还会同时画出地图表面。</div>
+    <div class="preview-toolbar-actions">
+      <label class="preview-toggle" title="模型高达 2000 格，会盖住地表。取消勾选可单独查看地图地形">
+        <input type="checkbox" id="showModel"> 显示模型
+      </label>
+      <button id="gizmo-move-btn" type="button" class="secondary" title="开启移动模式：多模型时点击预览中的模型选中它，拖动箭头只调整该模型的放置坐标，松手后写入左侧参数" disabled>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" style="vertical-align:-2px;margin-right:4px"><path d="M8 2v12M2 8h12M8 2l-2.5 2.5M8 2l2.5 2.5M8 14l-2.5-2.5M8 14l2.5-2.5M2 8l2.5-2.5M2 8l2.5 2.5M14 8l-2.5-2.5M14 8l-2.5 2.5"/></svg>移动
+      </button>
+      <button id="gizmo-rotate-btn" type="button" class="secondary" title="开启旋转模式：多模型时点击预览中的模型选中它，拖动圆环只调整该模型的三轴角度，松手后写入左侧参数" disabled>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" style="vertical-align:-2px;margin-right:4px"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.8 1.8v2.6h-2.6"/></svg>旋转
+      </button>
+      <button id="fullscreen-btn" type="button" class="secondary">全屏</button>
+      <button id="preview-popover-refresh" type="button" class="secondary" title="用当前参数重新生成预览">刷新预览</button>
+      <button id="preview-popover-run" type="button" class="write-only" title="把当前参数写入存档">开始写入</button>
+      <button id="preview-popover-export" type="button" class="secondary export-only" title="导出 Litematica 投影文件，不修改存档">导出投影</button>
+    </div>
+  </div>
+  <div class="preview-progress" id="preview-progress" hidden>
+    <div class="preview-progress-bar">
+      <div class="preview-progress-fill" id="preview-progress-fill"></div>
+    </div>
+    <span class="preview-progress-text" id="preview-progress-text"></span>
+  </div>
+  <div id="preview-stage" class="preview-stage">
+    <div id="preview-empty" class="preview-empty">等待预览数据</div>
+  </div>
+</section>
+
+<section id="palette-popover" class="palette-popover" hidden>
+  <div class="palette-popover-head">
+    <div>
+      <h3>替换方块并预览</h3>
+      <p>这里改的是当前映射文件。勾选「保存后自动刷新预览」，保存后就会立刻重跑预览。</p>
+    </div>
+    <div class="palette-popover-head-actions">
+      <button id="palette-popover-min" type="button" class="secondary palette-popover-close" title="缩小">─</button>
+      <button id="palette-popover-close" type="button" class="secondary palette-popover-close" title="关闭弹窗">×</button>
+    </div>
+  </div>
+  <div class="palette-popover-toolbar">
+    <div class="palette-popover-profile" id="palette-popover-profile">映射文件: -</div>
+    <div class="palette-popover-actions">
+      <button id="palette-popover-open-dir" type="button" class="secondary" title="在文件管理器中打开映射文件所在目录">打开映射目录</button>
+      <button id="palette-popover-add" type="button" class="secondary">添加条目</button>
+      <button id="palette-popover-save" type="button" title="把当前条目写入映射文件；改动在此之前只在前端预览里生效" disabled>保存修改</button>
+    </div>
+  </div>
+  <!-- 状态文本独立成行，不参与 actions 宽度，切换勾选时复选框位置不再跳动 -->
+  <div class="palette-popover-statusline">
+    <span class="palette-popover-status" id="palette-popover-status">等待打开</span>
+  </div>
+  <div class="palette-popover-body">
+    <div id="palette-popover-list" class="palette-popover-list"></div>
+    <div id="palette-popover-empty" class="palette-popover-empty">当前映射还没有可编辑条目。</div>
+  </div>
+</section>
+
+<!-- 文件选择弹窗：通过 /api/list-dir 浏览并选择模型文件 -->
+<section id="file-picker-modal" class="generated-save-modal" hidden>
+  <div class="generated-save-card file-picker-card">
+    <div class="generated-save-head">
+      <div>
+        <h3 id="file-picker-title">选择文件</h3>
+        <p class="generated-save-meta" id="file-picker-path">选择磁盘</p>
+      </div>
+      <button id="file-picker-close" type="button" class="secondary palette-popover-close" title="关闭">×</button>
+    </div>
+    <div class="file-picker-toolbar">
+      <button id="file-picker-up" type="button" class="secondary" title="进入上级目录">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5v-8M4.5 7.5 8 4l3.5 3.5"/></svg>
+        上级目录
+      </button>
+      <button id="file-picker-refresh" type="button" class="secondary" title="刷新当前目录">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.7 4.05M13.5 2.4v3H10.5"/></svg>
+        刷新
+      </button>
+      <label class="file-picker-allfiles" title="默认只显示匹配类型的文件，勾选后显示全部文件">
+        <input type="checkbox" id="file-picker-all"> 显示全部文件
+      </label>
+    </div>
+    <div class="file-picker-pathinput">
+      <input id="file-picker-path-input" placeholder="粘贴文件夹路径后回车，快速跳转到对应文件夹" spellcheck="false">
+      <button id="file-picker-path-go" type="button" class="secondary">跳转</button>
+    </div>
+    <div id="file-picker-list" class="file-picker-list"></div>
+    <div class="file-picker-status" id="file-picker-status"></div>
+    <div class="file-picker-actions">
+      <button id="file-picker-cancel" type="button" class="secondary">取消</button>
+      <button id="file-picker-ok" type="button">确定</button>
+    </div>
+  </div>
+</section>
+
+<section id="generated-save-modal" class="generated-save-modal" hidden>
+  <div class="generated-save-card">
+    <div class="generated-save-head">
+      <div>
+        <h3>生成模型方块映射</h3>
+        <p>给新映射文件起个名字。预览完成后，会把当前模型用到的方块写进这个文件，并自动切换到它。</p>
+      </div>
+      <button id="generated-save-close" type="button" class="secondary palette-popover-close" title="关闭弹窗">×</button>
+    </div>
+    <div class="generated-save-meta" id="generated-save-meta">同名文件已存在时会保留你改过的颜色，只补充缺失的方块。</div>
+    <div class="generated-save-input">
+      <label for="generated-save-name">新映射文件名称</label>
+      <input id="generated-save-name" placeholder="例如：中世纪小屋配色" spellcheck="false">
+    </div>
+    <div class="generated-save-status" id="generated-save-status">支持中文、字母、数字、- 和 _；开头需是文字或数字。</div>
+    <div class="generated-save-actions">
+      <button id="generated-save-only" type="button" class="secondary">取消</button>
+      <button id="generated-save-apply" type="button">生成映射</button>
+    </div>
+  </div>
+</section>
+
+<script type="module">
+  import * as THREE from "https://esm.sh/three@0.169.0";
+  import { OrbitControls } from "https://esm.sh/three@0.169.0/examples/jsm/controls/OrbitControls.js";
+  import { TransformControls } from "https://esm.sh/three@0.169.0/examples/jsm/controls/TransformControls.js";
+
+  const STORAGE_KEY = "model2mc-webui-form-v4";
+  const MAX_MODELS = 64;
+  const MODEL_FIELDS = ["obj", "mtl", "texture", "x", "y", "z", "rotationX", "rotationY", "rotationZ", "height"];
+
+  const form = {
+    world: document.getElementById("world"),
+    dimension: document.getElementById("dimension"),
+    height: document.getElementById("height"),
+    maxDimension: document.getElementById("maxDimension"),
+    samplesPerVoxel: document.getElementById("samplesPerVoxel"),
+    maxTriangleSamples: document.getElementById("maxTriangleSamples"),
+    previewPadding: document.getElementById("previewPadding"),
+    backup: document.getElementById("backup"),
+    surfaceLight: document.getElementById("surfaceLight"),
+    denoise: document.getElementById("denoise"),
+    paletteProfile: document.getElementById("paletteProfile"),
+    exportDir: document.getElementById("exportDir")
+  };
+
+  const ui = {
+    statusText: document.getElementById("status-text"),
+    cacheText: document.getElementById("cache-text"),
+    errorText: document.getElementById("error-text"),
+    runningState: document.getElementById("running-state"),
+    previewSummary: document.getElementById("preview-summary"),
+    previewProgress: document.getElementById("preview-progress"),
+    previewProgressFill: document.getElementById("preview-progress-fill"),
+    previewProgressText: document.getElementById("preview-progress-text"),
+    previewStage: document.getElementById("preview-stage"),
+    previewEmpty: document.getElementById("preview-empty"),
+    showModel: document.getElementById("showModel"),
+    fullscreenButton: document.getElementById("fullscreen-btn"),
+    gizmoMoveButton: document.getElementById("gizmo-move-btn"),
+    gizmoRotateButton: document.getElementById("gizmo-rotate-btn"),
+    previewPopoverRefresh: document.getElementById("preview-popover-refresh"),
+    previewPopoverRun: document.getElementById("preview-popover-run"),
+    previewPopoverExport: document.getElementById("preview-popover-export"),
+    log: document.getElementById("log"),
+    resetButton: document.getElementById("reset"),
+    generatePaletteButton: document.getElementById("generate-palette"),
+    previewButton: document.getElementById("preview"),
+    previewPopover: document.getElementById("preview-popover"),
+    previewPopoverClose: document.getElementById("preview-popover-close"),
+    previewPopoverMin: document.getElementById("preview-popover-min"),
+    previewToggleButton: document.getElementById("preview-toggle-btn"),
+    runButton: document.getElementById("run"),
+    exportLitematicButton: document.getElementById("export-litematic"),
+    tabWrite: document.getElementById("tab-write"),
+    tabExport: document.getElementById("tab-export"),
+    paramsTitle: document.getElementById("params-title"),
+    modelList: document.getElementById("model-list"),
+    addModelButton: document.getElementById("add-model"),
+    copyDx: document.getElementById("copyDx"),
+    copyDy: document.getElementById("copyDy"),
+    copyDz: document.getElementById("copyDz"),
+    editPaletteButton: document.getElementById("edit-palette-popup"),
+    palettePopover: document.getElementById("palette-popover"),
+    palettePopoverClose: document.getElementById("palette-popover-close"),
+    palettePopoverMin: document.getElementById("palette-popover-min"),
+    palettePopoverOpenDir: document.getElementById("palette-popover-open-dir"),
+    palettePopoverSave: document.getElementById("palette-popover-save"),
+    palettePopoverProfile: document.getElementById("palette-popover-profile"),
+    palettePopoverStatus: document.getElementById("palette-popover-status"),
+    palettePopoverAdd: document.getElementById("palette-popover-add"),
+    palettePopoverList: document.getElementById("palette-popover-list"),
+    palettePopoverEmpty: document.getElementById("palette-popover-empty"),
+    generatedSaveModal: document.getElementById("generated-save-modal"),
+    generatedSaveClose: document.getElementById("generated-save-close"),
+    generatedSaveMeta: document.getElementById("generated-save-meta"),
+    generatedSaveName: document.getElementById("generated-save-name"),
+    generatedSaveStatus: document.getElementById("generated-save-status"),
+    generatedSaveOnly: document.getElementById("generated-save-only"),
+    generatedSaveApply: document.getElementById("generated-save-apply"),
+    filePickerModal: document.getElementById("file-picker-modal"),
+    filePickerTitle: document.getElementById("file-picker-title"),
+    filePickerPath: document.getElementById("file-picker-path"),
+    filePickerUp: document.getElementById("file-picker-up"),
+    filePickerRefresh: document.getElementById("file-picker-refresh"),
+    filePickerAll: document.getElementById("file-picker-all"),
+    filePickerList: document.getElementById("file-picker-list"),
+    filePickerStatus: document.getElementById("file-picker-status"),
+    filePickerOk: document.getElementById("file-picker-ok"),
+    filePickerCancel: document.getElementById("file-picker-cancel"),
+    filePickerClose: document.getElementById("file-picker-close"),
+    filePickerPathInput: document.getElementById("file-picker-path-input"),
+    filePickerPathGo: document.getElementById("file-picker-path-go"),
+    themeToggle: document.getElementById("theme-toggle")
+  };
+
+  const preview3d = {
+    renderer: null,
+    // 调试句柄（浏览器控制台可检查场景/枢轴状态）
+    __debug: true,
+    scene: null,
+    camera: null,
+    controls: null,
+    group: null,
+    resizeObserver: null,
+    textureCache: new Map(),
+    raycaster: null,
+    pointer: new THREE.Vector2(),
+    // 建筑拾取列索引：key = x * 65536 + z → [boxIndex, ...]，配合 buildingBoxes 解析盒子
+    columnIndex: null,
+    blockTable: null,
+    // 建筑盒子原始数据 [x,y,z,sx,sy,sz,blockIdx]*，拾取时按列索引定位
+    buildingBoxes: null,
+    // 3D 软件式轴线（TransformControls）：移动/旋转模型，拖动结果写回模型的放置与旋转参数
+    gizmo: null,
+    gizmoPivot: null,
+    // 轴线锚点 = 建筑包围盒中心（渲染时确定），旋转绕该点进行（单模型/旧缓存整建筑模式用）
+    gizmoCenter: null,
+    // 多模型：每个模型一个枢轴组（锚定在各自包围盒中心），轴线只挂在被选中的那个上
+    perModelPivots: false,
+    modelPivots: [],
+    // 当前点选中的模型下标（仅 perModelPivots 模式下有效）
+    selectedModel: null,
+    selectionBox: null,
+    selectionHelper: null,
+    // 渲染时刻各模型参数快照（数值型），轴线总变换基于快照叠加，避免多段拖拽互相污染
+    gizmoBase: null,
+    gizmoMode: null,
+    gizmoDragging: false,
+    // 轴线已改动但尚未「刷新预览」：此时方块拾取坐标已过期，需禁用
+    gizmoDirty: false,
+    lastGizmoDragEnd: 0,
+    // 预览场景原点（世界坐标 = 场景坐标 + 原点）：建筑/枢轴都在场景坐标系里，
+    // 轴线写回表单（世界坐标）时必须先减原点再旋转、加回来，否则 Y 轴错位可达数十格
+    previewOrigin: null,
+    // 按需渲染标记：场景或相机变化时置 true，rAF 循环只在需要时才真正绘制
+    needsRender: true
+  };
+
+  let serverDefaults = null;
+  // 调试句柄：浏览器控制台 window.__p3d 可检查预览场景与模型枢轴状态
+  window.__p3d = preview3d;
+  let cursor = 0;
+  let pollTimer = null;
+  // 3D 预览悬浮窗默认展开；刷新预览渲染完成后自动弹出（见 renderPreview 末尾），已打开时无动作
+  let previewPopoverOpen = true;
+  let previewPending = false;
+  let previewRequestToken = 0;
+  let lastPreviewData = null;
+  let lastPreviewKey = "";
+  let previewBusy = false;
+  // “生成模型方块映射”按钮的一次性标记：仅让下一次预览请求带上 --generate-model-palette true
+  let generatePaletteOnce = false;
+  // 弹窗里用户填写的映射文件名，随一次性标记一起发送；保留在内存里作为下次弹窗的预填值
+  let generatePaletteName = "";
+
+  // 模型插槽：{obj, mtl, texture, x, y, z, rotation}，与 model-list 里的卡片一一对应
+  let modelState = [];
+  let modelCards = [];
+  // 各卡片收起状态（与 modelState 平行）：收起后只显示「模型 N」标题行
+  let modelCardCollapsed = [];
+  let currentMode = "export";
+  let writeModeModels = null;
+  let paletteProfiles = [];
+  let defaultPaletteProfileId = "默认";
+  const BLOCK_TEXTURE_VERSION = "20260825-popup-live-preview";
+  const paletteEditor = {
+    profileId: "",
+    inherits: "",
+    entries: [],
+    blockCatalog: [],
+    saving: false,
+    pendingSave: false,
+    focusTimer: null,
+    minimized: false,
+    lastSavedSignature: "",
+    // 未保存的方块替换链：旧方块 → 新方块（前端预览直接换渲染，保存时才写入文件）
+    blockReplacements: new Map(),
+    renderTimer: null
+  };
+
+  function setRunningState(nextRunning) {
+    const running = !!nextRunning;
+    ui.runButton.disabled = running;
+    ui.exportLitematicButton.disabled = running;
+    ui.runningState.textContent = running ? "运行中" : "待命";
+    syncActionAvailability();
+  }
+
+  function setMode(mode) {
+    if (mode === currentMode) {
+      return;
+    }
+    currentMode = mode;
+    ui.tabWrite.classList.toggle("active", mode === "write");
+    ui.tabExport.classList.toggle("active", mode === "export");
+    document.body.classList.toggle("mode-write", mode === "write");
+    document.body.classList.toggle("mode-export", mode === "export");
+    ui.paramsTitle.textContent = mode === "write" ? "体素与写入参数" : "体素与导出参数";
+    if (mode === "export" && modelState.length > 1) {
+      writeModeModels = modelState.map(model => ({ ...model }));
+      modelState = [modelState[0]];
+      renderModelCards();
+    } else if (mode === "write" && writeModeModels) {
+      modelState = writeModeModels.map(model => ({ ...model }));
+      writeModeModels = null;
+      renderModelCards();
+    }
+    const previewValidation = validateValues(mode === "export" ? previewPayloadValues() : snapshotValues(), "preview");
+    syncActionAvailability();
+    if (previewValidation.ok) {
+      schedulePreview(mode === "export" ? "已切换到导出模式。点击「刷新预览」渲染。" : "已切换回写入模式。点击「刷新预览」渲染。");
+    }
+    persistBrowserCache();
+  }
+
+  function snapshotValues(modelsOverride) {
+    const models = modelsOverride || modelState;
+    const values = {
+      modelCount: String(models.length),
+      world: form.world.value.trim(),
+      dimension: form.dimension.value,
+      height: form.height.value.trim(),
+      maxDimension: form.maxDimension.value.trim(),
+      samplesPerVoxel: form.samplesPerVoxel.value.trim(),
+      maxTriangleSamples: form.maxTriangleSamples.value.trim(),
+      previewPadding: form.previewPadding.value.trim(),
+      backup: form.backup.value,
+      surfaceLight: form.surfaceLight.value,
+      denoise: form.denoise.value,
+      paletteProfile: form.paletteProfile.value,
+      generateModelPalette: generatePaletteOnce ? "true" : "false",
+      generatePaletteName: generatePaletteOnce ? generatePaletteName : "",
+      exportDir: form.exportDir.value.trim()
+    };
+    models.forEach((model, index) => {
+      values[`obj${index}`] = (model.obj || "").trim();
+      values[`mtl${index}`] = (model.mtl || "").trim();
+      values[`texture${index}`] = (model.texture || "").trim();
+      values[`x${index}`] = (model.x || "").trim();
+      values[`y${index}`] = (model.y || "").trim();
+      values[`z${index}`] = (model.z || "").trim();
+      values[`rotationX${index}`] = model.rotationX || "0";
+      values[`rotationY${index}`] = model.rotationY || "0";
+      values[`rotationZ${index}`] = model.rotationZ || "0";
+      values[`height${index}`] = (model.height || "").trim();
+    });
+    return values;
+  }
+
+  function defaultModelValues(index, values = {}) {
+    // 兼容旧版单轴 rotation 字段：迁移为绕 Y 轴
+    const legacyRotation = values[`rotation${index}`] ?? (index === 0 ? values.rotation : "");
+    return {
+      obj: values[`obj${index}`] ?? (index === 0 ? values.obj : ""),
+      mtl: values[`mtl${index}`] ?? (index === 0 ? values.mtl : ""),
+      texture: values[`texture${index}`] ?? (index === 0 ? values.texture : ""),
+      x: values[`x${index}`] ?? (index === 0 ? values.x : "0"),
+      y: values[`y${index}`] ?? (index === 0 ? values.y : "64"),
+      z: values[`z${index}`] ?? (index === 0 ? values.z : "0"),
+      rotationX: values[`rotationX${index}`] ?? "0",
+      rotationY: values[`rotationY${index}`] ?? (legacyRotation || "0"),
+      rotationZ: values[`rotationZ${index}`] ?? "0",
+      height: values[`height${index}`] ?? ""
+    };
+  }
+
+  function renderPaletteProfiles(profiles, selectedValue) {
+    paletteProfiles = Array.isArray(profiles) ? profiles : [];
+    form.paletteProfile.innerHTML = "";
+    paletteProfiles.forEach(profile => {
+      const option = document.createElement("option");
+      option.value = profile.id;
+      option.textContent = profile.id;
+      form.paletteProfile.appendChild(option);
+    });
+    const fallback = selectedValue || defaultPaletteProfileId || paletteProfiles[0]?.id || "";
+    const exists = paletteProfiles.some(profile => profile.id === fallback);
+    form.paletteProfile.value = exists
+      ? fallback
+      : (paletteProfiles[0]?.id || defaultPaletteProfileId || "");
+  }
+
+  function upsertGeneratedPaletteProfile(meta = {}) {
+    const profileId = String(meta.generatedPaletteProfileId || "").trim();
+    if (!profileId) {
+      updatePaletteEditorButton();
+      return;
+    }
+    const existingIndex = paletteProfiles.findIndex(profile => profile.id === profileId);
+    const profile = {
+      id: profileId,
+      mode: "default",
+      inherits: defaultPaletteProfileId,
+      builtin: false,
+      path: meta.generatedPalettePath || ""
+    };
+    if (existingIndex >= 0) {
+      paletteProfiles[existingIndex] = { ...paletteProfiles[existingIndex], ...profile };
+    } else {
+      paletteProfiles = [...paletteProfiles, profile].sort((a, b) => {
+        const builtinDiff = Number(!!a.builtin) - Number(!!b.builtin);
+        return builtinDiff !== 0 ? builtinDiff : String(a.id).localeCompare(String(b.id));
+      });
+    }
+    renderPaletteProfiles(paletteProfiles, form.paletteProfile.value);
+    updatePaletteEditorButton();
+  }
+
+  function normalizePaletteHex(hex) {
+    let value = String(hex || "").trim();
+    if (value.startsWith("#")) {
+      value = value.slice(1);
+    }
+    if (value.length === 3) {
+      value = value.split("").map(char => char + char).join("");
+    }
+    if (!/^[0-9a-fA-F]{6}$/.test(value)) {
+      return null;
+    }
+    return "#" + value.toLowerCase();
+  }
+
+  function buildPaletteBlockCatalog(options) {
+    const seen = new Set();
+    return (Array.isArray(options) ? options : []).flatMap((rawBlock, index) => {
+      const block = String(rawBlock || "").trim();
+      if (!block || seen.has(block)) {
+        return [];
+      }
+      seen.add(block);
+      const localName = block.includes(":") ? block.split(":")[1] : block;
+      return [{
+        block,
+        order: index,
+        blockLower: block.toLowerCase(),
+        localLower: localName.toLowerCase(),
+        subtitle: localName
+      }];
+    });
+  }
+
+  function exactPaletteBlock(value) {
+    const query = String(value || "").trim().toLowerCase();
+    if (!query) {
+      return "";
+    }
+    const exact = paletteEditor.blockCatalog.find(item =>
+      item.blockLower === query || item.localLower === query
+    );
+    return exact ? exact.block : "";
+  }
+
+  function normalizePaletteBlockValue(value) {
+    return exactPaletteBlock(value) || String(value || "").trim();
+  }
+
+  function queryPaletteBlockCatalog(rawQuery) {
+    const query = String(rawQuery || "").trim().toLowerCase();
+    if (!query) {
+      return paletteEditor.blockCatalog.slice(0, 12);
+    }
+    return paletteEditor.blockCatalog
+      .map(item => {
+        let score = 0;
+        if (item.blockLower === query) {
+          score = 200;
+        } else if (item.localLower === query) {
+          score = 190;
+        } else if (item.blockLower.startsWith(query)) {
+          score = 120;
+        } else if (item.localLower.startsWith(query)) {
+          score = 110;
+        } else if (item.blockLower.includes(query)) {
+          score = 80;
+        } else if (item.localLower.includes(query)) {
+          score = 75;
+        }
+        return { item, score };
+      })
+      .filter(result => result.score > 0)
+      .sort((a, b) => b.score - a.score || a.item.order - b.item.order)
+      .slice(0, 12)
+      .map(result => result.item);
+  }
+
+  function setPaletteBlockIcon(icon, blockValue, fallbackHex) {
+    const img = icon.querySelector("img");
+    const fallback = icon.querySelector("span");
+    const block = normalizePaletteBlockValue(blockValue);
+    fallback.style.background = normalizePaletteHex(fallbackHex) || "linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02))";
+    if (!block) {
+      icon.classList.remove("has-image");
+      img.removeAttribute("src");
+      return;
+    }
+    const token = String(Date.now()) + Math.random().toString(16).slice(2);
+    img.dataset.token = token;
+    img.onload = () => {
+      if (img.dataset.token === token) {
+        icon.classList.add("has-image");
+      }
+    };
+    img.onerror = () => {
+      if (img.dataset.token === token) {
+        icon.classList.remove("has-image");
+      }
+    };
+    icon.classList.remove("has-image");
+    img.src = `/api/block-texture?block=${encodeURIComponent(block)}&v=${encodeURIComponent(BLOCK_TEXTURE_VERSION)}`;
+  }
+
+  function setPaletteEditorStatus(text, isError = false) {
+    ui.palettePopoverStatus.textContent = text || "";
+    ui.palettePopoverStatus.classList.toggle("error", !!isError);
+  }
+
+  /** 打开映射文件所在目录（paletteStorePath 即 model2mc-palettes 目录本身）。 */
+  async function openPaletteDirectory() {
+    const config = await api("/api/config");
+    const dir = String(config.paletteStorePath || "").trim();
+    if (!dir) {
+      setPaletteEditorStatus("后端未提供映射目录路径", true);
+      return;
+    }
+    await api(`/api/open-directory?path=${encodeURIComponent(dir)}`);
+    setPaletteEditorStatus(`已在文件管理器打开: ${dir}`);
+  }
+
+  function updatePaletteEditorButton() {
+    const selected = String(form.paletteProfile.value || "").trim();
+    ui.editPaletteButton.disabled = !selected;
+    ui.editPaletteButton.textContent = "编辑当前映射";
+    ui.editPaletteButton.title = selected ? `编辑 ${selected}` : "先选择映射文件";
+  }
+
+  function togglePalettePopover(open) {
+    ui.palettePopover.hidden = !open;
+    // 每次重新打开都恢复为展开状态（缩小态只在保持打开时生效）
+    if (open) {
+      setPalettePopoverMinimized(false);
+    }
+  }
+
+  function setPalettePopoverMinimized(minimized) {
+    paletteEditor.minimized = !!minimized;
+    ui.palettePopover.classList.toggle("is-minimized", paletteEditor.minimized);
+    ui.palettePopoverMin.textContent = paletteEditor.minimized ? "▴" : "─";
+    ui.palettePopoverMin.title = paletteEditor.minimized ? "展开" : "缩小";
+    if (paletteEditor.minimized) {
+      ui.previewSummary.textContent = "方块编辑器已缩小。点右上角「▴」展开后，才能点击方块替换。";
+    }
+  }
+
+  /** 未保存方块替换是否影响当前预览：按链式替换检查 blockTable 是否有方块被换掉。 */
+  function resolvePreviewBlock(block) {
+    const map = paletteEditor.blockReplacements;
+    if (!map.size) {
+      return block;
+    }
+    const seen = new Set();
+    let current = block;
+    while (map.has(current) && !seen.has(current)) {
+      seen.add(current);
+      current = map.get(current);
+    }
+    return current;
+  }
+
+  /** 保存按钮只在条目真的改动（与已保存/已加载内容不一致）时可用。 */
+  function updatePaletteSaveButton() {
+    if (ui.palettePopoverSave) {
+      ui.palettePopoverSave.disabled = paletteEditorSignature() === paletteEditor.lastSavedSignature;
+    }
+  }
+
+  function collectPaletteEditorRows() {
+    return paletteEditor.entries
+      .map(entry => ({
+        block: normalizePaletteBlockValue(entry.block),
+        color: normalizePaletteHex(entry.color)
+      }))
+      .filter(entry => entry.block && entry.color);
+  }
+
+  // 内容签名：只有条目的「方块+颜色」真实变化时签名才变。
+  // 用它判断是否有实际改动，避免失焦/退出编辑（没改任何东西）也触发保存和自动刷新。
+  function paletteEditorSignature() {
+    return collectPaletteEditorRows()
+      .map(entry => `${entry.block}\u0000${entry.color}`)
+      .sort()
+      .join("\u0001");
+  }
+
+  /**
+   * 编辑后不写文件：方块替换直接在前端预览里换渲染（改 blockTable 后重建网格，无需重跑体素化）。
+   * 写入映射文件由「保存修改」按钮显式触发。
+   */
+  function schedulePaletteEditorRender(statusText) {
+    if (statusText) {
+      setPaletteEditorStatus(statusText);
+    }
+    updatePaletteSaveButton();
+    clearTimeout(paletteEditor.renderTimer);
+    paletteEditor.renderTimer = setTimeout(() => {
+      applyPaletteChangesToPreview();
+    }, 300);
+  }
+
+  /** 把未保存的方块替换应用到当前预览数据并重建画面（含拾取用的 blockTable）。 */
+  function applyPaletteChangesToPreview() {
+    if (!lastPreviewData || !Array.isArray(lastPreviewData.blockTable) || !paletteEditor.blockReplacements.size) {
+      return;
+    }
+    let changed = false;
+    const newTable = lastPreviewData.blockTable.map(entry => {
+      const original = String(entry?.block || "");
+      const replaced = resolvePreviewBlock(original);
+      if (replaced !== original) {
+        changed = true;
+        return { ...entry, block: replaced };
+      }
+      return entry;
+    });
+    if (!changed) {
+      return;
+    }
+    lastPreviewData.blockTable = newTable;
+    if (previewBusy) {
+      // 完整预览流程进行中：结束后会拿最新数据重渲染，届时替换会一并生效
+      return;
+    }
+    renderPreview(lastPreviewData).catch(handleError);
+    setPaletteEditorStatus("改动已应用到预览。点「保存修改」写入映射文件");
+  }
+
+  function randomPaletteColor() {
+    return "#" + Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, "0");
+  }
+
+  function createPaletteEditorRow(entry) {
+    const row = document.createElement("div");
+    row.className = "palette-popover-row";
+
+    const icon = document.createElement("div");
+    icon.className = "palette-popover-icon";
+    const iconImg = document.createElement("img");
+    iconImg.alt = "";
+    const iconFallback = document.createElement("span");
+    icon.append(iconImg, iconFallback);
+
+    const colorWrap = document.createElement("div");
+    colorWrap.className = "palette-popover-color";
+    const colorInput = document.createElement("input");
+    colorInput.type = "color";
+    colorInput.value = normalizePaletteHex(entry.color) || randomPaletteColor();
+    const hexInput = document.createElement("input");
+    hexInput.className = "palette-popover-hex";
+    hexInput.value = colorInput.value;
+    colorWrap.append(colorInput, hexInput);
+
+    const blockWrap = document.createElement("div");
+    blockWrap.className = "palette-popover-block";
+    const blockInput = document.createElement("input");
+    blockInput.value = entry.block || "";
+    blockInput.placeholder = "输入方块 ID";
+    const blockMeta = document.createElement("div");
+    blockMeta.className = "palette-popover-meta";
+    const suggest = document.createElement("div");
+    suggest.className = "palette-popover-suggest";
+    suggest.hidden = true;
+    let suggestionItems = [];
+    let activeIndex = -1;
+
+    function updateBlockMeta() {
+      const normalized = normalizePaletteBlockValue(blockInput.value);
+      row.dataset.block = normalized;
+      blockMeta.textContent = normalized || "输入后可从下拉提示里替换方块";
+      blockInput.title = normalized;
+      setPaletteBlockIcon(icon, normalized, colorInput.value);
+    }
+
+    function hideSuggest() {
+      suggest.hidden = true;
+      suggestionItems = [];
+      activeIndex = -1;
+    }
+
+    function renderSuggest() {
+      const results = queryPaletteBlockCatalog(blockInput.value);
+      suggest.innerHTML = "";
+      suggestionItems = results;
+      activeIndex = results.length ? 0 : -1;
+      if (!results.length) {
+        hideSuggest();
+        return;
+      }
+      results.forEach((item, index) => {
+        const option = document.createElement("div");
+        option.className = "palette-popover-suggest-item" + (index === activeIndex ? " active" : "");
+        const main = document.createElement("strong");
+        main.textContent = item.block;
+        const sub = document.createElement("span");
+        sub.textContent = item.subtitle || item.block;
+        option.append(main, sub);
+        option.addEventListener("mousedown", event => {
+          event.preventDefault();
+          applySuggestion(item.block);
+        });
+        suggest.appendChild(option);
+      });
+      suggest.hidden = false;
+    }
+
+    function refreshActiveSuggestion() {
+      Array.from(suggest.children).forEach((child, index) => {
+        child.classList.toggle("active", index === activeIndex);
+      });
+    }
+
+    function commitBlockChange() {
+      const normalized = normalizePaletteBlockValue(blockInput.value);
+      const previous = normalizePaletteBlockValue(entry.block);
+      entry.block = normalized;
+      blockInput.value = normalized;
+      updateBlockMeta();
+      // 记录未保存的替换链：旧方块 → 新方块（前端预览按此换渲染，保存时才写文件）
+      if (previous && normalized && previous !== normalized) {
+        paletteEditor.blockReplacements.set(previous, normalized);
+      }
+      schedulePaletteEditorRender("方块已替换，正在更新预览...");
+    }
+
+    function applySuggestion(block) {
+      blockInput.value = block;
+      hideSuggest();
+      commitBlockChange();
+    }
+
+    blockInput.addEventListener("focus", renderSuggest);
+    blockInput.addEventListener("input", () => {
+      updateBlockMeta();
+      renderSuggest();
+    });
+    blockInput.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        hideSuggest();
+        return;
+      }
+      if (!suggest.hidden && suggestionItems.length) {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          activeIndex = (activeIndex + 1) % suggestionItems.length;
+          refreshActiveSuggestion();
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          activeIndex = (activeIndex - 1 + suggestionItems.length) % suggestionItems.length;
+          refreshActiveSuggestion();
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          if (activeIndex >= 0 && suggestionItems[activeIndex]) {
+            applySuggestion(suggestionItems[activeIndex].block);
+          } else {
+            commitBlockChange();
+          }
+        }
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commitBlockChange();
+      }
+    });
+    blockInput.addEventListener("blur", () => {
+      setTimeout(() => {
+        commitBlockChange();
+        hideSuggest();
+      }, 120);
+    });
+
+    colorInput.addEventListener("input", () => {
+      entry.color = colorInput.value;
+      hexInput.value = colorInput.value;
+      setPaletteBlockIcon(icon, blockInput.value, colorInput.value);
+      schedulePaletteEditorRender("颜色已更新。点「保存修改」写入映射文件");
+    });
+    hexInput.addEventListener("change", () => {
+      const normalized = normalizePaletteHex(hexInput.value);
+      if (!normalized) {
+        hexInput.value = colorInput.value;
+        return;
+      }
+      entry.color = normalized;
+      colorInput.value = normalized;
+      hexInput.value = normalized;
+      setPaletteBlockIcon(icon, blockInput.value, normalized);
+      schedulePaletteEditorRender("颜色已更新。点「保存修改」写入映射文件");
+    });
+
+    blockWrap.append(blockInput, blockMeta, suggest);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "secondary palette-popover-remove";
+    removeButton.textContent = "×";
+    removeButton.title = "删除该条目";
+    removeButton.addEventListener("click", () => {
+      paletteEditor.entries = paletteEditor.entries.filter(item => item !== entry);
+      renderPaletteEditor();
+      schedulePaletteEditorRender("条目已删除。点「保存修改」写入映射文件");
+    });
+
+    row.append(icon, colorWrap, blockWrap, removeButton);
+    updateBlockMeta();
+    return row;
+  }
+
+  function renderPaletteEditor() {
+    ui.palettePopoverList.innerHTML = "";
+    ui.palettePopoverEmpty.style.display = paletteEditor.entries.length ? "none" : "block";
+    paletteEditor.entries.forEach(entry => {
+      ui.palettePopoverList.appendChild(createPaletteEditorRow(entry));
+    });
+  }
+
+  function focusPaletteEditorBlock(blockState) {
+    const normalized = normalizePaletteBlockValue(blockState);
+    if (!normalized) {
+      return false;
+    }
+    const rows = Array.from(ui.palettePopoverList.querySelectorAll(".palette-popover-row"));
+    const row = rows.find(item => normalizePaletteBlockValue(item.dataset.block) === normalized);
+    rows.forEach(item => item.classList.remove("is-jump-target"));
+    if (!row) {
+      setPaletteEditorStatus(`当前映射里没有 ${normalized} 的条目`, true);
+      return false;
+    }
+    row.classList.add("is-jump-target");
+    clearTimeout(paletteEditor.focusTimer);
+    paletteEditor.focusTimer = setTimeout(() => {
+      row.classList.remove("is-jump-target");
+    }, 2200);
+    row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const blockInput = row.querySelector(".palette-popover-block input");
+    if (blockInput) {
+      blockInput.focus();
+      blockInput.select();
+    }
+    setPaletteEditorStatus(`已定位到 ${normalized}，现在可以直接替换它`);
+    return true;
+  }
+
+  function resolvePaletteEditorTargetProfile() {
+    return String(form.paletteProfile.value || "").trim();
+  }
+
+  async function openPaletteEditorForBlock(blockState) {
+    const normalized = normalizePaletteBlockValue(blockState);
+    if (!normalized) {
+      return;
+    }
+    const targetProfileId = resolvePaletteEditorTargetProfile();
+    if (!targetProfileId) {
+      throw new Error("还没有可编辑的映射文件");
+    }
+    if (ui.palettePopover.hidden || paletteEditor.profileId !== targetProfileId) {
+      await openPaletteEditor(targetProfileId, { syncPreviewSelection: false });
+    } else {
+      togglePalettePopover(true);
+    }
+    focusPaletteEditorBlock(normalized);
+  }
+
+  async function openPaletteEditor(profileId, { syncPreviewSelection = true } = {}) {
+    const targetProfileId = String(profileId || "").trim();
+    if (!targetProfileId) {
+      throw new Error("还没有可编辑的映射文件");
+    }
+    const data = await api(`/api/palette?profile=${encodeURIComponent(targetProfileId)}`);
+    paletteEditor.profileId = data.currentProfile?.id || targetProfileId;
+    paletteEditor.inherits = data.currentProfile?.inherits || defaultPaletteProfileId;
+    paletteEditor.entries = Array.isArray(data.entries)
+      ? data.entries.map(entry => ({
+          block: String(entry.block || "").trim(),
+          color: normalizePaletteHex(entry.color) || randomPaletteColor()
+        }))
+      : [];
+    paletteEditor.blockCatalog = buildPaletteBlockCatalog(data.blockOptions);
+    // 以加载到的服务端内容为基线：之后的「保存修改」只在内容真的变了才会写文件
+    paletteEditor.lastSavedSignature = paletteEditorSignature();
+    // 重新加载 = 放弃未保存的前端替换（entries 已回到文件内容）
+    paletteEditor.blockReplacements.clear();
+    updatePaletteSaveButton();
+    ui.palettePopoverProfile.textContent = `映射文件: ${paletteEditor.profileId}`;
+    setPaletteEditorStatus("改方块会立即应用到预览；点「保存修改」写入映射文件");
+    renderPaletteEditor();
+    togglePalettePopover(true);
+    if (syncPreviewSelection && form.paletteProfile.value !== paletteEditor.profileId) {
+      form.paletteProfile.value = paletteEditor.profileId;
+      persistBrowserCache();
+      updatePaletteEditorButton();
+      lastPreviewKey = "";
+    }
+  }
+
+  async function savePaletteEditor() {
+    if (!paletteEditor.profileId) {
+      return;
+    }
+    const signature = paletteEditorSignature();
+    // 内容没实际变化（例如只是点了一下输入框又失焦）就跳过保存
+    if (signature === paletteEditor.lastSavedSignature) {
+      setPaletteEditorStatus("没有需要保存的改动");
+      return;
+    }
+    if (paletteEditor.saving) {
+      paletteEditor.pendingSave = true;
+      return;
+    }
+    paletteEditor.saving = true;
+    setPaletteEditorStatus("正在写入映射文件...");
+    try {
+      const rows = collectPaletteEditorRows();
+      const params = new URLSearchParams();
+      params.set("action", "save");
+      params.set("profile", paletteEditor.profileId);
+      params.set("inherits", paletteEditor.inherits || defaultPaletteProfileId);
+      params.set("count", String(rows.length));
+      rows.forEach((row, index) => {
+        params.set(`block${index}`, row.block);
+        params.set(`color${index}`, row.color);
+      });
+      await api("/api/palette", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+        body: params
+      });
+      paletteEditor.lastSavedSignature = signature;
+      persistBrowserCache();
+      // 已写入文件：替换链使命完毕（之后的预览由文件驱动），清掉避免陈旧换渲染
+      paletteEditor.blockReplacements.clear();
+      updatePaletteSaveButton();
+      setPaletteEditorStatus("映射已写入文件。如需按新映射重新匹配颜色，点主界面「刷新预览」");
+    } catch (error) {
+      setPaletteEditorStatus(error.message, true);
+      throw error;
+    } finally {
+      paletteEditor.saving = false;
+      if (paletteEditor.pendingSave) {
+        paletteEditor.pendingSave = false;
+        savePaletteEditor().catch(handleError);
+      }
+    }
+  }
+
+  function currentGeneratedPaletteId(meta = lastPreviewData?.meta || {}) {
+    return String(meta?.generatedPaletteProfileId || "").trim();
+  }
+
+  async function maybeOpenGeneratedPalette(meta = lastPreviewData?.meta || {}) {
+    const profileId = currentGeneratedPaletteId(meta);
+    if (profileId && form.paletteProfile.value !== profileId) {
+      form.paletteProfile.value = profileId;
+      persistBrowserCache();
+    }
+    updatePaletteEditorButton();
+  }
+
+  function setGenerateDialogStatus(text, isError = false) {
+    ui.generatedSaveStatus.textContent = text || "";
+    ui.generatedSaveStatus.classList.toggle("error", !!isError);
+  }
+
+  function toggleGenerateDialog(open) {
+    ui.generatedSaveModal.hidden = !open;
+    if (open) {
+      ui.generatedSaveName.value = generatePaletteName;
+      setGenerateDialogStatus("支持中文、字母、数字、- 和 _；开头需是文字或数字。");
+      ui.generatedSaveName.focus();
+      ui.generatedSaveName.select();
+    }
+  }
+
+  function handleGeneratePaletteClick() {
+    const previewValues = currentMode === "export" ? previewPayloadValues() : snapshotValues();
+    const validation = validateValues(previewValues, "preview");
+    if (!validation.ok) {
+      setPaletteEditorStatus("参数不完整，暂时不能生成映射", true);
+      ui.previewSummary.textContent = `${validation.message}。补全后再点“生成模型方块映射”即可。`;
+      return;
+    }
+    toggleGenerateDialog(true);
+  }
+
+  function confirmGeneratePalette() {
+    const name = ui.generatedSaveName.value.trim().toLowerCase();
+    if (!/^[\p{L}\p{N}][\p{L}\p{N}_-]*$/u.test(name)) {
+      setGenerateDialogStatus("名称不能为空；支持中文、字母、数字、- 和 _，开头需是文字或数字。", true);
+      ui.generatedSaveName.focus();
+      return;
+    }
+    if (name === "default" || name === "默认") {
+      setGenerateDialogStatus("default 和 默认 是内置默认模板的名字，请换一个。", true);
+      ui.generatedSaveName.focus();
+      return;
+    }
+    generatePaletteName = name;
+    generatePaletteOnce = true;
+    toggleGenerateDialog(false);
+    setPaletteEditorStatus("等待本次预览生成映射文件...");
+    // 生成映射文件依赖一次预览运行；这是用户明确点击的动作，直接发起渲染
+    refreshPreview(true).catch(handleError).finally(() => {
+      syncActionAvailability();
+    });
+  }
+
+  function applyValues(values) {
+    let count = Math.max(0, parseInt(values.modelCount || "0", 10));
+    if (!Number.isFinite(count)) {
+      count = 0;
+    }
+    count = Math.min(Math.max(count, 1), MAX_MODELS);
+    modelState = [];
+    for (let i = 0; i < count; i++) {
+      modelState.push(defaultModelValues(i, values));
+    }
+    renderModelCards();
+
+    form.world.value = values.world || "";
+    form.dimension.value = values.dimension || "overworld";
+    form.height.value = values.height || "96";
+    form.maxDimension.value = values.maxDimension || "4096";
+    form.samplesPerVoxel.value = values.samplesPerVoxel || "1.35";
+    // 旧默认 8/64 会导致大三角形漏采出镂空，低于 256 的存量一律升到新默认
+    const maxTriangleSamplesRaw = parseInt(values.maxTriangleSamples || "8192", 10);
+    form.maxTriangleSamples.value = String(
+      Number.isFinite(maxTriangleSamplesRaw) && maxTriangleSamplesRaw >= 256 ? maxTriangleSamplesRaw : 8192);
+    form.previewPadding.value = values.previewPadding || "12";
+    form.backup.value = values.backup || "true";
+    form.surfaceLight.value = values.surfaceLight || "false";
+    form.denoise.value = values.denoise || "0";
+    renderPaletteProfiles(paletteProfiles, values.paletteProfile || values.paletteMode || defaultPaletteProfileId);
+    form.exportDir.value = values.exportDir || "";
+    updatePaletteEditorButton();
+  }
+
+  function createModelCard(values, index) {
+    const card = document.createElement("div");
+    card.className = "model-card";
+    card.dataset.modelIndex = String(index);
+
+    const head = document.createElement("div");
+    head.className = "model-card-head";
+    const collapsed = !!modelCardCollapsed[index];
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "secondary card-toggle";
+    toggle.textContent = collapsed ? "▸" : "▾";
+    toggle.title = collapsed ? "展开该模型的配置" : "收起该模型的配置，只保留模型代号";
+    toggle.addEventListener("click", () => toggleModelCard(index));
+    const title = document.createElement("strong");
+    // 收起时在模型代号后追加放置坐标（写入地图模式下坐标才有实际意义，
+    // 方便收起后一眼看到每个模型放在哪里）。坐标随 modelState[index] 实时更新，
+    // 收起/展开瞬间调用 card.updateTitle 刷新。
+    const coordText = () => {
+      const x = String(values.x ?? "").trim();
+      const y = String(values.y ?? "").trim();
+      const z = String(values.z ?? "").trim();
+      return `模型${index + 1}(${x || 0},${y || 0},${z || 0})`;
+    };
+    const updateTitle = () => {
+      title.textContent = modelCardCollapsed[index] ? coordText() : `模型 ${index + 1}`;
+    };
+    updateTitle();
+    const actions = document.createElement("div");
+    actions.className = "model-card-actions";
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "secondary copy-btn write-only";
+    copyButton.textContent = "复制";
+    copyButton.title = "按上方复制间距生成新模型";
+    copyButton.addEventListener("click", () => copyModel(index));
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "secondary remove-btn";
+    removeButton.textContent = "移除";
+    removeButton.addEventListener("click", () => removeModel(index));
+    actions.append(copyButton, removeButton);
+    head.append(toggle, title, actions);
+    card.appendChild(head);
+    if (collapsed) {
+      card.classList.add("collapsed");
+    }
+    // 配置主体单独包一层：收起时整体隐藏，头部（模型代号 + 按钮）保留
+    const body = document.createElement("div");
+    body.className = "model-card-body";
+
+    const pathFields = document.createElement("div");
+    pathFields.className = "field-grid";
+    [
+      ["obj", "OBJ 文件"],
+      ["mtl", "MTL 路径"],
+      ["texture", "贴图路径"]
+    ].forEach(([field, label]) => {
+      const wrap = document.createElement("div");
+      wrap.className = "field";
+      const labelEl = document.createElement("label");
+      labelEl.textContent = label;
+      const rowDiv = document.createElement("div");
+      rowDiv.className = "path-input-row";
+      const input = document.createElement("input");
+      input.dataset.modelField = field;
+      input.value = values[field] || "";
+      input.placeholder = field === "obj" ? "D:\\proj\\modelToMc\\model2mc\\src\\main\\resources\\model\\xxx.obj" : "";
+      const browse = document.createElement("button");
+      browse.type = "button";
+      browse.className = "secondary path-browse";
+      browse.innerHTML = `${ICON_FOLDER}浏览…`;
+      browse.title = `选择${label}（调用后台接口浏览文件夹）`;
+      browse.addEventListener("click", () => openFilePicker(index, field));
+      rowDiv.append(input, browse);
+      wrap.append(labelEl, rowDiv);
+      pathFields.appendChild(wrap);
+    });
+    body.appendChild(pathFields);
+
+    const grid = document.createElement("div");
+    grid.className = "param-grid";
+    [
+      ["x", "X", "number"],
+      ["y", "Y", "number"],
+      ["z", "Z", "number"]
+    ].forEach(([field, label, type]) => {
+      const wrap = document.createElement("div");
+      wrap.className = "field write-only";
+      const labelEl = document.createElement("label");
+      labelEl.textContent = label;
+      const input = document.createElement("input");
+      input.type = type;
+      input.dataset.modelField = field;
+      input.value = values[field] || "";
+      wrap.append(labelEl, input);
+      grid.appendChild(wrap);
+    });
+    body.appendChild(grid);
+    // 旋转角度独立一排，紧跟坐标 X/Y/Z 那排之后（同一 param-grid 会 4 列流式换行，
+    // 三个坐标 + 三个旋转混排会挤成 4+2 的错位布局）
+    const rotateGrid = document.createElement("div");
+    rotateGrid.className = "param-grid";
+    [
+      ["rotationX", "绕X°", "number"],
+      ["rotationY", "绕Y°", "number"],
+      ["rotationZ", "绕Z°", "number"]
+    ].forEach(([field, label, type]) => {
+      const wrap = document.createElement("div");
+      wrap.className = "field";
+      const labelEl = document.createElement("label");
+      labelEl.textContent = label;
+      labelEl.title = "绕模型中心旋转（任意角度 0-359，正角度按先 X 后 Y 后 Z 顺序作用）";
+      const input = document.createElement("input");
+      input.type = type;
+      input.min = "0";
+      input.max = "359";
+      input.dataset.modelField = field;
+      input.value = values[field] || "0";
+      wrap.append(labelEl, input);
+      rotateGrid.appendChild(wrap);
+    });
+    body.appendChild(rotateGrid);
+
+    const heightWrap = document.createElement("div");
+    heightWrap.className = "field";
+    const heightLabel = document.createElement("label");
+    heightLabel.textContent = "目标高度";
+    heightLabel.title = "本模型体素化的目标高度；留空则使用右侧全局“目标高度(默认)”";
+    const heightInput = document.createElement("input");
+    heightInput.type = "number";
+    heightInput.dataset.modelField = "height";
+    heightInput.value = values.height || "";
+    heightInput.placeholder = "全局";
+    heightWrap.append(heightLabel, heightInput);
+    rotateGrid.appendChild(heightWrap);
+    card.appendChild(body);
+
+    card.querySelectorAll("[data-model-field]").forEach(element => {
+      const field = element.dataset.modelField;
+      const eventName = element.tagName === "SELECT" ? "change" : "input";
+      element.addEventListener(eventName, () => {
+        const target = modelState[index];
+        if (target) {
+          target[field] = element.value;
+        }
+        // 放置坐标改动：已渲染的预览直接按差值平移网格，不触发 clearPreviewScene
+        // （否则输入过程中某轴短暂为空会校验失败、清空整个预览场景）。
+        if (field === "x" || field === "y" || field === "z") {
+          const model = modelState[index];
+          const complete = model
+            && String(model.x ?? "").trim() !== ""
+            && String(model.y ?? "").trim() !== ""
+            && String(model.z ?? "").trim() !== "";
+          if (complete) {
+            movePreviewModelTo(index, Number(model.x) || 0, Number(model.y) || 0, Number(model.z) || 0);
+          }
+          persistBrowserCache();
+          updatePaletteEditorButton();
+          syncActionAvailability();
+          return;
+        }
+        onAnyFieldChange();
+      });
+    });
+
+    // 收起/展开后刷新标题（收起态显示坐标），供 toggleModelCard 调用
+    card.updateTitle = updateTitle;
+
+    return card;
+  }
+
+  function renderModelCards() {
+    // 收起状态与模型列表保持同长：新增的模型默认展开，移除时由 removeModel 先同步裁剪
+    while (modelCardCollapsed.length < modelState.length) {
+      modelCardCollapsed.push(false);
+    }
+    modelCardCollapsed.length = modelState.length;
+    ui.modelList.innerHTML = "";
+    modelCards = modelState.map((values, index) => {
+      const card = createModelCard(values, index);
+      ui.modelList.appendChild(card);
+      return card;
+    });
+    modelState.forEach((_, index) => {
+      const card = modelCards[index];
+      if (card) {
+        const removeButton = card.querySelector(".model-card-head .remove-btn");
+        if (removeButton) {
+          removeButton.style.display = modelState.length > 1 ? "" : "none";
+        }
+      }
+    });
+  }
+
+  function copyModel(index) {
+    if (modelState.length >= MAX_MODELS) {
+      ui.errorText.textContent = `最多支持 ${MAX_MODELS} 个模型`;
+      return;
+    }
+    const source = modelState[index];
+    if (!source) {
+      return;
+    }
+    const dx = parseFloat(ui.copyDx.value) || 0;
+    const dy = parseFloat(ui.copyDy.value) || 0;
+    const dz = parseFloat(ui.copyDz.value) || 0;
+    modelState.push({
+      ...source,
+      x: String((Number(source.x) || 0) + dx),
+      y: String((Number(source.y) || 0) + dy),
+      z: String((Number(source.z) || 0) + dz)
+    });
+    renderModelCards();
+    onAnyFieldChange();
+  }
+
+  function addModel() {
+    if (modelState.length >= MAX_MODELS) {
+      ui.errorText.textContent = `最多支持 ${MAX_MODELS} 个模型`;
+      return;
+    }
+    modelState.push({
+      obj: "", mtl: "", texture: "",
+      x: modelState[0]?.x || "0",
+      y: modelState[0]?.y || "64",
+      z: modelState[0]?.z || "0",
+      rotationX: "0", rotationY: "0", rotationZ: "0",
+      height: ""
+    });
+    renderModelCards();
+    onAnyFieldChange();
+  }
+
+  function removeModel(index) {
+    if (modelState.length <= 1) {
+      return;
+    }
+    modelState.splice(index, 1);
+    modelCardCollapsed.splice(index, 1);
+    renderModelCards();
+    onAnyFieldChange();
+  }
+
+  /** 收起/展开某个模型的配置卡片：收起后只保留「模型 N」标题行和操作按钮。 */
+  function toggleModelCard(index) {
+    if (index < 0 || index >= modelCardCollapsed.length) {
+      return;
+    }
+    modelCardCollapsed[index] = !modelCardCollapsed[index];
+    const card = modelCards[index];
+    if (!card) {
+      return;
+    }
+    const collapsed = modelCardCollapsed[index];
+    card.classList.toggle("collapsed", collapsed);
+    const toggle = card.querySelector(".model-card-head .card-toggle");
+    if (toggle) {
+      toggle.textContent = collapsed ? "▸" : "▾";
+      toggle.title = collapsed ? "展开该模型的配置" : "收起该模型的配置，只保留模型代号";
+    }
+    // 收起态标题追加放置坐标（如 模型1(60,50,60)）
+    if (typeof card.updateTitle === "function") {
+      card.updateTitle();
+    }
+  }
+
+  /** 预览里点选模型后：高亮左侧对应配置卡片并滚动到可见区域。 */
+  function highlightModelCard(index) {
+    modelCards.forEach((card, i) => card.classList.toggle("selected", i === index));
+    const card = modelCards[index];
+    if (card && card.scrollIntoView) {
+      card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }
+
+  function clearModelCardHighlight() {
+    modelCards.forEach(card => card.classList.remove("selected"));
+  }
+
+  function payloadValues() {
+    return snapshotValues();
+  }
+
+  function previewPayloadValues() {
+    const values = snapshotValues();
+    if (currentMode === "export") {
+      values.world = "";
+      values.previewPadding = "0";
+    }
+    return values;
+  }
+
+  function appendLines(lines) {
+    if (!lines || lines.length === 0) {
+      return;
+    }
+    const text = lines.join("\n");
+    ui.log.value = ui.log.value ? `${ui.log.value}\n${text}` : text;
+    ui.log.scrollTop = ui.log.scrollHeight;
+  }
+
+  function clearPreviewScene() {
+    clearPreviewGroup();
+    ui.previewEmpty.style.display = "flex";
+    hidePreviewProgress();
+  }
+
+  function validateValues(values, mode = currentMode) {
+    const missing = [];
+    const exportMode = mode === "export";
+    const previewMode = mode === "preview";
+    const modelCount = Math.min(Math.max(0, parseInt(values.modelCount || "1", 10)), exportMode ? 1 : MAX_MODELS);
+    const suffix = modelCount > 1 ? index => ` (模型${index + 1})` : () => "";
+    for (let i = 0; i < modelCount; i++) {
+      [
+        ["obj", "OBJ 文件"],
+        ["mtl", "MTL 路径"],
+        ["texture", "贴图路径"]
+      ].forEach(([key, label]) => {
+        if (!String(values[`${key}${i}`] ?? "").trim()) {
+          missing.push(`${label}${suffix(i)}`);
+        }
+      });
+      if (!exportMode) {
+        for (const key of ["x", "y", "z"]) {
+          if (!String(values[`${key}${i}`] ?? "").trim()) {
+            missing.push(`${key.toUpperCase()}${suffix(i)}`);
+          }
+        }
+      }
+    }
+
+    const sharedLabels = exportMode
+      ? [
+          ["maxDimension", "最大边长"],
+          ["samplesPerVoxel", "每格采样"],
+          ["maxTriangleSamples", "三角最大采样"],
+          ["denoise", "去杂强度"],
+          ["paletteProfile", "映射文件"]
+        ]
+      : [
+          ...(previewMode ? [] : [["world", "存档目录"]]),
+          ["dimension", "维度"],
+          ["height", "目标高度(默认)"],
+          ["maxDimension", "最大边长"],
+          ["samplesPerVoxel", "每格采样"],
+          ["maxTriangleSamples", "三角最大采样"],
+          ["previewPadding", "地形预览范围"],
+          ["denoise", "去杂强度"],
+          ["paletteProfile", "映射文件"]
+        ];
+    for (const [key, label] of sharedLabels) {
+      if (!String(values[key] ?? "").trim()) {
+        missing.push(label);
+      }
+    }
+    if (missing.length > 0) {
+      return { ok: false, message: `还缺参数：${missing.join("、")}` };
+    }
+
+    const numericLabels = exportMode
+      ? [
+          ["height", "目标高度(默认)"],
+          ["maxDimension", "最大边长"],
+          ["samplesPerVoxel", "每格采样"],
+          ["maxTriangleSamples", "三角最大采样"]
+        ]
+      : [
+          ["height", "目标高度(默认)"],
+          ["maxDimension", "最大边长"],
+          ["samplesPerVoxel", "每格采样"],
+          ["maxTriangleSamples", "三角最大采样"],
+          ["previewPadding", "地形预览范围"]
+        ];
+    for (const [key, label] of numericLabels) {
+      const value = Number(values[key]);
+      if (!Number.isFinite(value)) {
+        return { ok: false, message: `${label} 不是有效数字` };
+      }
+    }
+    for (let i = 0; i < modelCount; i++) {
+      for (const axis of ["X", "Y", "Z"]) {
+        const raw = String(values[`rotation${axis}${i}`] ?? "").trim();
+        if (!/^\d+$/.test(raw) || Number(raw) > 359) {
+          return { ok: false, message: `绕${axis}轴角度${suffix(i)}必须是 0-359 整数` };
+        }
+      }
+      const modelHeightRaw = String(values[`height${i}`] ?? "").trim();
+      if (modelHeightRaw) {
+        const modelHeight = Number(modelHeightRaw);
+        if (!Number.isFinite(modelHeight) || modelHeight < 1) {
+          return { ok: false, message: `目标高度${suffix(i)}必须为正整数，或留空继承全局` };
+        }
+      }
+    }
+
+    return { ok: true, message: "" };
+  }
+
+  function syncActionAvailability() {
+    // 任务进行时禁用预览与导出，避免大内存任务并发执行（叠加会 OOM）
+    const running = ui.runningState.textContent === "运行中";
+    const values = snapshotValues();
+    const previewValidation = validateValues(currentMode === "export" ? previewPayloadValues() : values, "preview");
+    const writeValidation = validateValues(values, "write");
+    const exportValidation = validateValues(values, "export");
+    ui.previewButton.disabled = running || !previewValidation.ok;
+    ui.generatePaletteButton.disabled = running || !previewValidation.ok;
+    ui.runButton.disabled = currentMode !== "write" || running || !writeValidation.ok;
+    ui.exportLitematicButton.disabled = currentMode !== "export" || running || !exportValidation.ok;
+    // 悬浮窗内的同功能按钮与主区按钮保持同步禁用
+    if (ui.previewPopoverRefresh) {
+      ui.previewPopoverRefresh.disabled = ui.previewButton.disabled;
+    }
+    if (ui.previewPopoverRun) {
+      ui.previewPopoverRun.disabled = ui.runButton.disabled;
+    }
+    if (ui.previewPopoverExport) {
+      ui.previewPopoverExport.disabled = ui.exportLitematicButton.disabled;
+    }
+  }
+
+  function toFormBody(values) {
+    const params = new URLSearchParams();
+    Object.entries(values).forEach(([key, value]) => {
+      params.set(key, value ?? "");
+    });
+    return params;
+  }
+
+  async function api(path, options = {}) {
+    const response = await fetch(path, options);
+    const text = await response.text();
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (error) {
+      throw new Error(`后端返回了无法解析的内容: ${text}`);
+    }
+    if (!response.ok || data.ok === false) {
+      throw new Error(data.error || `请求失败: ${response.status}`);
+    }
+    return data;
+  }
+
+  function persistBrowserCache() {
+    try {
+      // 导出模式下 modelState 已被裁剪为单个模型；若此前从写入模式带着多模型切过来，
+      // 用写入模式的完整模型列表生成缓存快照——否则刷新页面会永久丢失多模型配置
+      // （writeModeModels 是内存变量，刷新即清零），切回写入后无法恢复。
+      const models = currentMode === "export" && writeModeModels ? writeModeModels : modelState;
+      const values = snapshotValues(models);
+      // 模型文件路径若与服务器探测的默认值一致，则不写入缓存：
+      // 默认路径会随服务器探测目录变化（如 test-model），不该被当成“用户配置”固化下来，
+      // 否则会覆盖用户后来自行填写的路径。用户真正填写的路径照常写入缓存。
+      for (const key of Object.keys(values)) {
+        if (/^(obj|mtl|texture)\d*$/.test(key)
+            && String(values[key] || "").trim() === String(serverDefaults[key] || "").trim()) {
+          delete values[key];
+        }
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        values,
+        copySpacing: { x: ui.copyDx.value, y: ui.copyDy.value, z: ui.copyDz.value }
+      }));
+      ui.cacheText.textContent = "浏览器本地缓存";
+    } catch (error) {
+      ui.cacheText.textContent = "缓存写入失败";
+    }
+  }
+
+  function restoreBrowserCache() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        ui.cacheText.textContent = "未命中浏览器缓存";
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed.values) {
+        // 前端缓存优先恢复用户配置（用户填的路径/参数一律以缓存为准）。
+        // 只清理历史遗留的“废弃默认目录”路径：旧版本默认模型放在
+        // src/main/resources/model（该目录已不存在），若缓存里残留则丢弃，让服务器探测值兜底。
+        // 去杂旧默认是 2（强），新默认改为 0（关）：缓存里残留的 2 一律丢弃，
+        // 让新默认兜底；确需「强」的用户重选一次即可。
+        if (String(parsed.values.denoise ?? "") === "2") {
+          delete parsed.values.denoise;
+        }
+        const merged = { ...serverDefaults, ...parsed.values };
+        for (const key of Object.keys(merged)) {
+          if (/^(obj|mtl|texture)\d*$/.test(key)
+              && /(^|[\\/])src[\\/]main[\\/]resources[\\/]model([\\/]|$)/.test(String(merged[key] || ""))) {
+            delete merged[key];
+          }
+        }
+        applyValues(merged);
+      }
+      if (parsed.copySpacing) {
+        ui.copyDx.value = parsed.copySpacing.x ?? "100";
+        ui.copyDy.value = parsed.copySpacing.y ?? "0";
+        ui.copyDz.value = parsed.copySpacing.z ?? "100";
+      }
+      ui.cacheText.textContent = "已恢复浏览器缓存";
+    } catch (error) {
+      ui.cacheText.textContent = "缓存损坏";
+    }
+  }
+
+  async function loadConfig() {
+    const data = await api("/api/config");
+    defaultPaletteProfileId = data.defaultProfileId || defaultPaletteProfileId;
+    // 导出目录 placeholder 用后端实际落盘路径（软件运行目录下的 exports），不再写死
+    if (data.defaultExportDir && form.exportDir && !form.exportDir.placeholder) {
+      form.exportDir.placeholder = data.defaultExportDir;
+    }
+    renderPaletteProfiles(data.paletteProfiles || [], data.values?.paletteProfile || data.values?.paletteMode || defaultPaletteProfileId);
+    serverDefaults = data.values || {};
+    applyValues(serverDefaults);
+    restoreBrowserCache();
+    // 导出模式只保留第一个模型；缓存里的多模型状态留给切回写入模式时恢复
+    if (currentMode === "export" && modelState.length > 1) {
+      writeModeModels = modelState.map(model => ({ ...model }));
+      modelState = [modelState[0]];
+      renderModelCards();
+    }
+    ui.statusText.textContent = "已连接";
+    setRunningState(!!data.running);
+    updatePaletteEditorButton();
+    const previewValidation = validateValues(currentMode === "export" ? previewPayloadValues() : snapshotValues(), "preview");
+    syncActionAvailability();
+    if (previewValidation.ok) {
+      schedulePreview("参数已加载。点击「刷新预览」开始渲染。");
+    } else {
+      ui.previewSummary.textContent = `${previewValidation.message}。补全后点击「刷新预览」渲染。`;
+      clearPreviewScene();
+    }
+  }
+
+  const RUN_PHASE_LABELS = {
+    parse: "解析模型",
+    voxelize: "体素化模型",
+    merge: "合并模型",
+    denoise: "体素去杂",
+    write: "写入区块",
+    export: "生成导出文件"
+  };
+
+  function runPhaseText(progress) {
+    if (!progress) {
+      return "处理中...";
+    }
+    const label = RUN_PHASE_LABELS[progress.phase];
+    if (!label) {
+      if (progress.phase === "done") {
+        return "完成";
+      }
+      return "处理中...";
+    }
+    // 有子进度（解析/体素化/去杂）用 subDone/subTotal，否则用 done/total（模型/区块数）
+    const subTotal = Number(progress.subTotal) || 0;
+    const subDone = Number(progress.subDone) || 0;
+    const total = Number(progress.total) || 0;
+    const done = Number(progress.done) || 0;
+    let percent = null;
+    if (subTotal > 0) {
+      percent = Math.min(100, Math.floor((subDone / subTotal) * 100));
+    } else if (total > 1) {
+      percent = Math.min(100, Math.floor((done / total) * 100));
+    }
+    if (percent != null) {
+      return `${label} ${percent}%`;
+    }
+    const modelText = total > 1 ? `（模型 ${done}/${total}）` : "";
+    return `${label}${modelText}...`;
+  }
+
+  async function fetchStatus() {
+    const data = await api(`/api/status?cursor=${cursor}`);
+    if (Array.isArray(data.lines)) {
+      appendLines(data.lines);
+    }
+    cursor = data.cursor || cursor;
+    setRunningState(!!data.running);
+    ui.statusText.textContent = data.status || (data.running ? "运行中" : "空闲");
+    ui.errorText.textContent = data.error || "-";
+    if (data.running) {
+      if (data.progress) {
+        const progress = data.progress;
+        const subTotal = Number(progress.subTotal) || 0;
+        const subDone = Number(progress.subDone) || 0;
+        let ratio = null;
+        if (subTotal > 0) {
+          ratio = Math.min(1, subDone / subTotal);
+        } else if (Number(progress.total) > 1) {
+          ratio = Math.min(1, (Number(progress.done) || 0) / progress.total);
+        }
+        setPreviewProgress(ratio, runPhaseText(progress));
+      }
+      schedulePoll();
+    } else {
+      hidePreviewProgress();
+    }
+  }
+
+  function schedulePoll() {
+    clearTimeout(pollTimer);
+    pollTimer = setTimeout(() => {
+      fetchStatus().catch(handleError);
+    }, 1200);
+  }
+
+  async function startTask(endpoint, label, extra = {}) {
+    const validation = validateValues(payloadValues());
+    if (!validation.ok) {
+      ui.previewSummary.textContent = `${validation.message}。补全后点击「刷新预览」渲染。`;
+      syncActionAvailability();
+      throw new Error(validation.message);
+    }
+    ui.log.value = "";
+    cursor = 0;
+    ui.errorText.textContent = "-";
+    persistBrowserCache();
+    const data = await api(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      body: toFormBody({ ...payloadValues(), ...extra })
+    });
+    appendLines([`[UI] 已启动${label}任务 #${data.jobId}`]);
+    ui.statusText.textContent = "任务已启动";
+    setRunningState(true);
+    schedulePoll();
+  }
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function setPreviewProgress(ratio, text) {
+    const progress = ui.previewProgress;
+    if (ratio == null) {
+      progress.classList.add("indeterminate");
+      ui.previewProgressFill.style.width = "";
+    } else {
+      progress.classList.remove("indeterminate");
+      ui.previewProgressFill.style.width = `${Math.max(0, Math.min(100, ratio * 100))}%`;
+    }
+    progress.hidden = false;
+    ui.previewProgressText.textContent = text || "";
+  }
+
+  function hidePreviewProgress() {
+    ui.previewProgress.hidden = true;
+    ui.previewProgress.classList.remove("indeterminate");
+    ui.previewProgressText.textContent = "";
+  }
+
+  const PREVIEW_PHASE_LABELS = {
+    parse: "解析模型",
+    voxelize: "体素化面片",
+    merge: "合并体素网格",
+    denoise: "体素去杂",
+    build: "提取模型表面",
+    terrain: "读取地形",
+    serialize: "序列化预览数据"
+  };
+
+  function previewPhaseText(status, elapsedSeconds) {
+    if (!status || status.phase === "idle") {
+      return "正在准备...";
+    }
+    const waiting = elapsedSeconds != null ? `（已 ${elapsedSeconds} 秒）` : "";
+    const phase = status.phase;
+    const label = PREVIEW_PHASE_LABELS[phase];
+    if (label) {
+      // 多模型并行的体素化各阶段都带上已完成模型数
+      const modelText = status.total > 1 ? `模型 ${status.done}/${status.total}，` : "";
+      const subTotal = Number(status.subTotal) || 0;
+      const subDone = Number(status.subDone) || 0;
+      if (subTotal > 0) {
+        const percent = Math.min(100, Math.floor((subDone / subTotal) * 100));
+        return `${modelText}${label} ${percent}%`;
+      }
+      return `${modelText}${label}${waiting}`;
+    }
+    if (phase === "done") {
+      return "完成";
+    }
+    return "处理中...";
+  }
+
+  async function fetchPreviewResult(jobId) {
+    const response = await fetch(`/api/preview-result?jobId=${jobId}`);
+    if (!response.ok) {
+      let message = `请求失败: ${response.status}`;
+      try {
+        const data = JSON.parse(await response.text());
+        if (data && data.error) {
+          message = data.error;
+        }
+      } catch (error) {
+        // 保留默认错误信息
+      }
+      throw new Error(message);
+    }
+    // 未压缩响应：Content-Length 即总字节数，流式读取算接收百分比
+    const total = Number(response.headers.get("Content-Length")) || 0;
+    if (!response.body || typeof response.body.getReader !== "function" || total <= 0) {
+      const text = await response.text();
+      return JSON.parse(text);
+    }
+    const reader = response.body.getReader();
+    // 按 Content-Length 预分配后直接流入：865MB 结果若先攒 chunks 再拼接，
+    // 拼接期间新旧两份共 1.7GB，叠加解析输出会把浏览器逼进磁盘交换——表现就是「解析预览数据」卡死
+    let bytes = new Uint8Array(total);
+    let received = 0;
+    let extras = null; // 兜底：实际字节数超出 Content-Length（异常路径）才启用
+    for (;;) {
+      const step = await reader.read();
+      if (step.done) {
+        break;
+      }
+      const chunk = step.value;
+      if (extras === null && received + chunk.length <= total) {
+        bytes.set(chunk, received);
+      } else if (extras === null) {
+        extras = [bytes.slice(0, received), chunk];
+      } else {
+        extras.push(chunk);
+      }
+      received += chunk.length;
+      const ratio = Math.min(1, received / total);
+      setPreviewProgress(ratio, `接收预览数据 ${Math.floor(ratio * 100)}%`);
+    }
+    if (extras !== null) {
+      bytes = new Uint8Array(received);
+      let offset = 0;
+      for (const part of extras) {
+        bytes.set(part, offset);
+        offset += part.length;
+      }
+    }
+    setPreviewProgress(null, "解析预览数据...");
+    // 先让进度条绘制一帧再移交解析（V8 单字符串上限约 5.37 亿字符，865MB 结果
+    // decode 成 8.65 亿字符超限会被 TextDecoder 静默截断，所以只能扫字节建 Int32Array）
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const report = ratio => setPreviewProgress(Math.min(1, ratio), `解析预览数据 ${Math.floor(Math.min(1, ratio) * 100)}%`);
+    return await parsePreviewBytes(bytes, report);
+  }
+
+  // —— 解析预览结果大数组（building 可达 2.8 亿个数字）——
+  // 主线程同步解析要连续跑几十秒：页面冻结、进度条无法重绘，看起来就是卡死。
+  // 挪进 Web Worker：字节缓冲零拷贝移交（transfer），解析出的 Int32Array 再零拷贝移回，
+  // 主线程全程空闲，worker 每 ~2% 回报一次进度；worker 不可用时退回同步解析。
+  function parsePreviewBytes(bytes, report) {
+    const worker = createPreviewParseWorker();
+    if (!worker) {
+      return parsePreviewBytesSync(bytes, report);
+    }
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      worker.onmessage = event => {
+        const message = event.data;
+        if (message && message.type === "progress") {
+          report(message.ratio);
+          return;
+        }
+        settled = true;
+        worker.terminate();
+        if (message && message.type === "done") {
+          resolve({
+            terrain: message.terrain,
+            building: message.building,
+            blockTable: message.blockTable,
+            meta: message.meta
+          });
+        } else {
+          reject(new Error((message && message.message) || "解析预览数据失败"));
+        }
+      };
+      worker.onerror = event => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        worker.terminate();
+        reject(new Error(event.message || "解析预览数据失败"));
+      };
+      // 字节视图与底层缓冲不对齐时先复制出精确的一份再移交
+      const buffer = bytes.byteOffset === 0 && bytes.buffer.byteLength === bytes.length
+        ? bytes.buffer
+        : bytes.slice().buffer;
+      worker.postMessage({ bytes: buffer }, [buffer]);
+    });
+  }
+
+  let previewParseWorkerUrl = null;
+
+  /** 用本页已定义的解析函数拼装 worker 源码（逻辑不复制两份）；创建失败返回 null 走同步兜底。 */
+  function createPreviewParseWorker() {
+    try {
+      if (!previewParseWorkerUrl) {
+        const source = `
+const TERRAIN_KEY = new Uint8Array([${Array.from(TERRAIN_KEY).join(",")}]);
+const BUILDING_KEY = new Uint8Array([${Array.from(BUILDING_KEY).join(",")}]);
+${findJsonArrayRange.toString()}
+${scanIntArray.toString()}
+${parseTailJson.toString()}
+self.onmessage = event => {
+  const bytes = new Uint8Array(event.data.bytes);
+  const report = ratio => self.postMessage({ type: "progress", ratio: ratio });
+  try {
+    const terrainRange = findJsonArrayRange(bytes, 0, TERRAIN_KEY);
+    const buildingRange = terrainRange ? findJsonArrayRange(bytes, terrainRange[1], BUILDING_KEY) : null;
+    if (!terrainRange || !buildingRange) {
+      // 结构不符合预期（小结果）时整体解析；超大结果必然走上面的快路径
+      const data = JSON.parse(new TextDecoder().decode(bytes));
+      self.postMessage({ type: "done", terrain: data.terrain, building: data.building, blockTable: data.blockTable, meta: data.meta });
+      return;
+    }
+    const terrain = scanIntArray(bytes, terrainRange[0], terrainRange[1], report);
+    const building = scanIntArray(bytes, buildingRange[0], buildingRange[1], report);
+    // building 数组之后都是小字段（blockTable/meta），尾部文本远小于单字符串上限
+    const tailData = parseTailJson(bytes, buildingRange[1]);
+    const transfer = [];
+    if (terrain.buffer.byteLength > 0) {
+      transfer.push(terrain.buffer);
+    }
+    if (building.buffer.byteLength > 0) {
+      transfer.push(building.buffer);
+    }
+    self.postMessage({ type: "done", terrain: terrain, building: building, blockTable: tailData.blockTable, meta: tailData.meta }, transfer);
+  } catch (error) {
+    self.postMessage({ type: "error", message: String(error && error.message || error) });
+  }
+};`;
+        previewParseWorkerUrl = URL.createObjectURL(new Blob([source], { type: "application/javascript" }));
+      }
+      return new Worker(previewParseWorkerUrl);
+    } catch (error) {
+      previewParseWorkerUrl = null;
+      return null;
+    }
+  }
+
+  /** 同步解析兜底（worker 不可用时）：与 worker 内逻辑保持一致。 */
+  function parsePreviewBytesSync(bytes, report) {
+    const terrainRange = findJsonArrayRange(bytes, 0, TERRAIN_KEY);
+    const buildingRange = terrainRange ? findJsonArrayRange(bytes, terrainRange[1], BUILDING_KEY) : null;
+    if (!terrainRange || !buildingRange) {
+      return JSON.parse(new TextDecoder().decode(bytes));
+    }
+    const terrain = scanIntArray(bytes, terrainRange[0], terrainRange[1], report);
+    const building = scanIntArray(bytes, buildingRange[0], buildingRange[1], report);
+    const tailData = parseTailJson(bytes, buildingRange[1]);
+    return {
+      terrain,
+      building,
+      blockTable: tailData.blockTable,
+      meta: tailData.meta
+    };
+  }
+
+  // JSON 对象顶层键 "key": 的数组值字节区间；terrain/building 只含数字与逗号，直接找第一个匹配 (深度=0) 的 ']'
+  const TERRAIN_KEY = new Uint8Array([0x22, 0x74, 0x65, 0x72, 0x72, 0x61, 0x69, 0x6E, 0x22, 0x3A]); // "terrain":
+  const BUILDING_KEY = new Uint8Array([0x22, 0x62, 0x75, 0x69, 0x6C, 0x64, 0x69, 0x6E, 0x67, 0x22, 0x3A]); // "building":
+
+  function findJsonArrayRange(bytes, fromIndex, keyBytes) {
+    outer: for (let i = fromIndex; i + keyBytes.length <= bytes.length; i++) {
+      for (let k = 0; k < keyBytes.length; k++) {
+        if (bytes[i + k] !== keyBytes[k]) {
+          continue outer;
+        }
+      }
+      let j = i + keyBytes.length;
+      while (j < bytes.length && (bytes[j] === 32 || bytes[j] === 9 || bytes[j] === 10 || bytes[j] === 13)) {
+        j++;
+      }
+      if (j < bytes.length && bytes[j] === 0x5B) { // '['
+        let depth = 0;
+        for (let p = j; p < bytes.length; p++) {
+          if (bytes[p] === 0x5B) {
+            depth++;
+          } else if (bytes[p] === 0x5D) {
+            depth--;
+            if (depth === 0) {
+              return [j, p + 1];
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  // building 数组之后的小字段形如 ,"blockTable":[...],"meta":{...}}：
+  // 从 ] 后一位截取的文本以逗号开头、以外层 } 结尾，直接 JSON.parse 会报
+  // "Unexpected token ','"——去掉首逗号和末 } 再补回外层 { 解析。
+  function parseTailJson(bytes, fromIndex) {
+    const text = new TextDecoder().decode(bytes.subarray(fromIndex));
+    return JSON.parse("{" + text.replace(/^\s*,/, "").replace(/\}\s*$/, "") + "}");
+  }
+
+  // 把 JSON 数字数组字节流直接扫描为 Int32Array（两遍：先数元素数预分配，再填充）。
+  // 空数组 [] 返回长度 0；负数坐标系数支持 '-'
+  function scanIntArray(bytes, start, end, report) {
+    let commas = 0;
+    for (let i = start + 1; i < end; i++) {
+      if (bytes[i] === 0x2C) { // ','
+        commas++;
+      }
+    }
+    let p = start + 1;
+    while (p < end && (bytes[p] === 32 || bytes[p] === 9 || bytes[p] === 10 || bytes[p] === 13)) {
+      p++;
+    }
+    const empty = p >= end || bytes[p] === 0x5D; // ']'
+    const out = empty ? new Int32Array(0) : new Int32Array(commas + 1);
+    const reportEvery = Math.max(1, Math.floor((commas + 1) / 50)); // 约每 2% 报一次
+    let o = 0;
+    let i = start + 1;
+    let lastReport = 0;
+    while (i < end && !empty) {
+      // 元素分隔符：逗号与空白都要跳过。旧版只跳空白，数字后 i 停在逗号上
+      // 又不满足任何分支 → i 永不前进 → 死循环（「卡解析预览数据」的根因）
+      while (i < end && (bytes[i] === 0x2C || bytes[i] === 32 || bytes[i] === 9 || bytes[i] === 10 || bytes[i] === 13)) {
+        i++;
+      }
+      if (i >= end || bytes[i] === 0x5D) {
+        break;
+      }
+      const numberStart = i;
+      let neg = false;
+      if (bytes[i] === 0x2D) { // '-'
+        neg = true;
+        i++;
+      }
+      let value = 0;
+      while (i < end && bytes[i] >= 48 && bytes[i] <= 57) {
+        value = value * 10 + (bytes[i] - 48);
+        i++;
+      }
+      if (i === numberStart) {
+        i++; // 其余非法字节（理论上不会出现）：跳过，防止同一下标反复空转
+      }
+      out[o++] = neg ? -value : value;
+      if (o - lastReport >= reportEvery) {
+        lastReport = o;
+        report(o / Math.max(1, commas + 1));
+      }
+    }
+    report(1);
+    return out;
+  }
+
+  async function refreshPreview(force = false) {
+    // 预览大模型耗时较长，禁止并发请求（否则后端会同时跑多本体素化导致 OOM）；
+    // 进行中再触发时先记下待刷新，当前完成后用最新参数自动补一次
+    if (previewBusy) {
+      previewPending = true;
+      return;
+    }
+    // 写入进行中不发起预览（与后端互斥锁双重保险）
+    if (ui.runningState.textContent === "运行中") {
+      return;
+    }
+
+    const values = previewPayloadValues();
+    const validation = validateValues(values, "preview");
+    syncActionAvailability();
+    if (!validation.ok) {
+      ui.previewSummary.textContent = `${validation.message}。补全后点击「刷新预览」渲染。`;
+      ui.errorText.textContent = "-";
+      clearPreviewScene();
+      return;
+    }
+
+    const requestBody = toFormBody(values);
+    // 一次性生成标记随本次请求发出后即复位，之后的参数变化触发的预览不再重复生成映射
+    generatePaletteOnce = false;
+    if (!force && lastPreviewData && requestBody === lastPreviewKey) {
+      upsertGeneratedPaletteProfile(lastPreviewData.meta || {});
+      await maybeOpenGeneratedPalette(lastPreviewData.meta || {});
+      await renderPreview(lastPreviewData);
+      return;
+    }
+
+    previewBusy = true;
+    const requestToken = ++previewRequestToken;
+    ui.errorText.textContent = "-";
+    ui.previewButton.disabled = true;
+    persistBrowserCache();
+    // 点击后立刻出进度条，避免发起到首次轮询（约 0.5 秒）之间没有任何反馈
+    setPreviewProgress(null, "正在准备...");
+    try {
+      const started = await api("/api/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+        body: requestBody
+      });
+      if (requestToken !== previewRequestToken) {
+        return;
+      }
+      const jobId = started.jobId;
+      // 轮询预览进度（轻量，不含结果）；完成后从 /api/preview-result 一次性取回结果渲染
+      const pollStart = Date.now();
+      for (;;) {
+        await sleep(500);
+        const status = await api(`/api/preview-status?jobId=${jobId}`);
+        if (requestToken !== previewRequestToken) {
+          return;
+        }
+        if (!status.finished) {
+          const subTotal = Number(status.subTotal) || 0;
+          const subDone = Number(status.subDone) || 0;
+          // 全阶段统一按 subDone/subTotal 显示百分比；无法量化的阶段退回不定进度条+秒数心跳
+          const ratio = subTotal > 0 ? Math.min(1, subDone / subTotal) : null;
+          const elapsed = Math.floor((Date.now() - pollStart) / 1000);
+          setPreviewProgress(ratio, previewPhaseText(status, ratio == null ? elapsed : null));
+          continue;
+        }
+        if (status.error) {
+          throw new Error(status.error);
+        }
+        if (!status.hasResult) {
+          return; // 任务已被更新的预览覆盖，放弃
+        }
+        const result = await fetchPreviewResult(jobId);
+        if (requestToken !== previewRequestToken) {
+          return;
+        }
+        lastPreviewData = result;
+        // 未保存的方块替换继续套用到新预览：编辑器里改过的方块重渲染后仍显示新方块
+        if (Array.isArray(result.blockTable) && paletteEditor.blockReplacements.size) {
+          result.blockTable = result.blockTable.map(entry => {
+            const original = String(entry?.block || "");
+            const replaced = resolvePreviewBlock(original);
+            return replaced !== original ? { ...entry, block: replaced } : entry;
+          });
+        }
+        lastPreviewKey = requestBody;
+        upsertGeneratedPaletteProfile(result.meta || {});
+        await maybeOpenGeneratedPalette(result.meta || {});
+        await renderPreview(result);
+        break;
+      }
+    } finally {
+      previewBusy = false;
+      hidePreviewProgress();
+      if (previewPending) {
+        previewPending = false;
+        refreshPreview().catch(handleError).finally(() => {
+          syncActionAvailability();
+        });
+      }
+    }
+    const meta = lastPreviewData && lastPreviewData.meta ? lastPreviewData.meta : {};
+    const terrainEnabled = meta.terrainEnabled !== false;
+    const surfaceText = terrainEnabled && Number.isFinite(meta.surfaceY)
+      ? `，落点地表 Y ${(meta.surfaceY || 0) + (meta.originY || 0)}`
+      : "";
+    const terrainCount = meta.terrainCount || 0;
+    const expectedColumns = meta.terrainExpectedColumns || 0;
+    const loadedColumns = meta.terrainLoadedColumns || 0;
+    let terrainWarn = "";
+    if (terrainEnabled && terrainCount === 0) {
+      terrainWarn = "。注意：目标坐标附近的存档 region 几乎没有地形数据（region 文件缺失或该区域从未生成），预览读不到该处地表，请检查存档是否完整";
+    } else if (terrainEnabled && expectedColumns > 0 && loadedColumns < expectedColumns) {
+      const missingColumns = expectedColumns - loadedColumns;
+      terrainWarn = `。注意：目标预览范围的地形数据不完整，实际加载 ${loadedColumns} / ${expectedColumns} 列（缺 ${missingColumns} 列，可能是 region 文件缺失或该区域从未生成）`;
+    }
+    const primary = modelState[0] || {};
+    const modelText = Number.isFinite(Number(meta.modelCount)) && meta.modelCount > 1
+      ? `，${meta.modelCount} 个模型`
+      : "";
+    const terrainText = terrainEnabled
+      ? `地图表面方块 ${terrainCount} 块，地图步长 ${meta.terrainStep || 1}`
+      : (currentMode === "export" ? "导出预览不加载地形" : "未加载地形（未填写存档目录）");
+    const generatedPaletteText = meta.generatedPaletteProfileId
+      ? `，已生成映射文件 ${meta.generatedPaletteProfileId}（${meta.generatedPaletteCount || 0} 个方块）`
+      : "";
+    const buildingStepXZ = meta.buildingStepXZ || meta.buildingStep || 1;
+    const buildingStepY = meta.buildingStepY || 1;
+    ui.previewSummary.textContent = `目标 (${primary.x || 0}, ${primary.y || 0}, ${primary.z || 0})${modelText}，${terrainText}，建筑体块 ${meta.buildingCount || 0} 块，建筑步长 平面 ${buildingStepXZ} / 高度 ${buildingStepY}${surfaceText}${terrainWarn}${generatedPaletteText}`;
+    syncActionAvailability();
+  }
+
+  async function resetParameters() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (error) {
+      // ignore
+    }
+    applyValues(serverDefaults || {});
+    ui.copyDx.value = "100";
+    ui.copyDy.value = "0";
+    ui.copyDz.value = "100";
+    ui.cacheText.textContent = "缓存已清空";
+    ui.errorText.textContent = "-";
+    togglePalettePopover(false);
+    const validation = validateValues(currentMode === "export" ? previewPayloadValues() : snapshotValues(), "preview");
+    appendLines(["[UI] 已重置参数并清空浏览器缓存"]);
+    syncActionAvailability();
+    if (validation.ok) {
+      schedulePreview("已重置为默认参数。点击「刷新预览」渲染。");
+    } else {
+      ui.previewSummary.textContent = `${validation.message}。补全后点击「刷新预览」渲染。`;
+      clearPreviewScene();
+    }
+  }
+
+  function handleError(error) {
+    console.error(error);
+    ui.errorText.textContent = error.message;
+    if (error.message && !error.message.startsWith("还缺参数")) {
+      ui.previewSummary.textContent = error.message;
+    }
+    appendLines([`[UI] 错误: ${error.message}`]);
+  }
+
+  function onAnyFieldChange() {
+    persistBrowserCache();
+    updatePaletteEditorButton();
+    const validation = validateValues(currentMode === "export" ? previewPayloadValues() : snapshotValues(), "preview");
+    syncActionAvailability();
+    if (validation.ok) {
+      schedulePreview("参数已更新。点击「刷新预览」渲染最新效果。");
+    } else {
+      ui.errorText.textContent = "-";
+      ui.previewSummary.textContent = `${validation.message}。补全后点击「刷新预览」渲染。`;
+      clearPreviewScene();
+    }
+  }
+
+  function bindAutoCache() {
+    Object.values(form).forEach(element => {
+      const eventName = element.tagName === "SELECT" ? "change" : "input";
+      element.addEventListener(eventName, onAnyFieldChange);
+    });
+    ui.addModelButton.addEventListener("click", addModel);
+    // 复制间距只影响之后复制出的模型，改动无需刷新预览，仅保存到缓存
+    [ui.copyDx, ui.copyDy, ui.copyDz].forEach(input => {
+      input.addEventListener("input", persistBrowserCache);
+    });
+  }
+
+  // 手动渲染模式：自动预览入口（进页面/改参数/切模式/重置）只更新提示，不发起渲染；
+  // 只有点击「刷新预览」按钮才会真正开始渲染
+  function schedulePreview(message) {
+    if (message) {
+      ui.previewSummary.textContent = message;
+    }
+  }
+
+  function toggleFullscreen() {
+    const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+    if (fullscreenElement) {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
+      return;
+    }
+    const request = ui.previewStage.requestFullscreen
+      || ui.previewStage.webkitRequestFullscreen;
+    if (!request) {
+      ui.errorText.textContent = "当前浏览器不支持全屏";
+      return;
+    }
+    request.call(ui.previewStage).catch(error => {
+      ui.errorText.textContent = `进入全屏失败: ${error.message}`;
+    });
+  }
+
+  function syncFullscreenButton() {
+    const active = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    ui.fullscreenButton.textContent = active ? "退出全屏" : "全屏";
+    // 全屏时只有预览舞台这一棵子树会被渲染，fixed 弹窗位于其外不会显示；
+    // 进入全屏时把方块编辑器移入舞台，退出时移回 body，保证全屏下也能用。
+    const target = active ? ui.previewStage : document.body;
+    if (ui.palettePopover.parentNode !== target) {
+      target.appendChild(ui.palettePopover);
+    }
+  }
+
+  function setPreviewPopover(open) {
+    previewPopoverOpen = !!open;
+    if (ui.previewPopover.classList.contains("is-minimized")) {
+      setPreviewPopoverMinimized(false);
+    }
+    ui.previewPopover.hidden = !previewPopoverOpen;
+    ui.previewToggleButton.classList.toggle("active", previewPopoverOpen);
+    // 隐藏时舞台尺寸为 0，重新打开后等布局恢复再重算渲染器画布并重绘一帧
+    if (previewPopoverOpen && preview3d.renderer) {
+      requestAnimationFrame(() => {
+        resizePreviewRenderer();
+        requestPreviewRender();
+      });
+    }
+    if (!previewPopoverOpen) {
+      ui.previewSummary.textContent = "3D 预览已关闭。点顶栏「3D 预览」按钮重新打开。";
+    } else {
+      const validation = validateValues(currentMode === "export" ? previewPayloadValues() : snapshotValues(), "preview");
+      if (validation.ok) {
+        schedulePreview("3D 预览已打开。点击「刷新预览」渲染最新效果。");
+      }
+    }
+  }
+
+  // 悬浮窗窗口化：标题栏拖动移动、四边四角 8 向缩放、可缩小为标题条。
+  // 位置用显式 left/top 表示（不再依赖 CSS 的 right/bottom），配合视口钳制保证不拖出屏幕。
+  // 位置变量提到模块级，保证拖动与「缩小到鼠标处」共用同一份状态
+  let previewWinLeft = 0;
+  let previewWinTop = 0;
+  // 缩小前的位置存档：展开时原样恢复（小条会挪到鼠标处，不能让它把展开位置带走）
+  let previewWinRestoreLeft = null;
+  let previewWinRestoreTop = null;
+
+  function initPreviewPopoverWindow() {
+    const pop = ui.previewPopover;
+    if (!pop) {
+      return;
+    }
+    const MIN_W = 420;
+    const MIN_H = 320;
+    const clamp = (value, lo, hi) => Math.min(Math.max(value, lo), hi);
+
+    function apply() {
+      pop.style.left = `${previewWinLeft}px`;
+      pop.style.top = `${previewWinTop}px`;
+    }
+
+    // 视口变化时把窗口拉回可见区域
+    function fitViewport() {
+      const w = pop.offsetWidth;
+      const h = pop.offsetHeight;
+      previewWinLeft = clamp(previewWinLeft, 0, Math.max(0, window.innerWidth - w));
+      previewWinTop = clamp(previewWinTop, 0, Math.max(0, window.innerHeight - h));
+      apply();
+    }
+
+    function bindDrag() {
+      const head = pop.querySelector(".preview-popover-head");
+      if (!head) {
+        return;
+      }
+      head.addEventListener("pointerdown", event => {
+        if (event.target.closest("button")) {
+          return; // 标题栏按钮（缩小/关闭）不触发拖动
+        }
+        event.preventDefault();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const startLeft = previewWinLeft;
+        const startTop = previewWinTop;
+        const w = pop.offsetWidth;
+        const h = pop.offsetHeight;
+        function onMove(e) {
+          previewWinLeft = clamp(startLeft + (e.clientX - startX), 0, Math.max(0, window.innerWidth - w));
+          previewWinTop = clamp(startTop + (e.clientY - startY), 0, Math.max(0, window.innerHeight - h));
+          apply();
+        }
+        function onUp(e) {
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+          window.removeEventListener("pointercancel", onUp);
+          // 缩小态的小悬浮条：没拖动（位移 < 5px）就是「点一下」，直接在原位置展开，
+          // 鼠标不用移动就能继续操作
+          if (ui.previewPopover.classList.contains("is-minimized")
+              && Math.hypot(e.clientX - startX, e.clientY - startY) < 5) {
+            setPreviewPopoverMinimized(false);
+          }
+        }
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+      });
+    }
+
+    function bindResize() {
+      const dirs = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
+      dirs.forEach(dir => {
+        const handle = document.createElement("div");
+        handle.className = `pv-resize pv-resize-${dir}`;
+        handle.dataset.dir = dir;
+        handle.setAttribute("role", "img");
+        handle.setAttribute("aria-label", `调整大小：${dir}`);
+        pop.appendChild(handle);
+        handle.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const startX = event.clientX;
+          const startY = event.clientY;
+          const startLeft = previewWinLeft;
+          const startTop = previewWinTop;
+          const startW = pop.offsetWidth;
+          const startH = pop.offsetHeight;
+          const maxW = Math.max(MIN_W, window.innerWidth - 20);
+          const maxH = Math.max(MIN_H, window.innerHeight - 20);
+          function onMove(e) {
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            let w = startW;
+            let h = startH;
+            let l = startLeft;
+            let t = startTop;
+            if (dir.includes("e")) {
+              w = clamp(startW + dx, MIN_W, maxW);
+            }
+            if (dir.includes("s")) {
+              h = clamp(startH + dy, MIN_H, maxH);
+            }
+            if (dir.includes("w")) {
+              w = clamp(startW - dx, MIN_W, maxW);
+              l = startLeft + (startW - w);
+            }
+            if (dir.includes("n")) {
+              h = clamp(startH - dy, MIN_H, maxH);
+              t = startTop + (startH - h);
+            }
+            l = clamp(l, 0, Math.max(0, window.innerWidth - w));
+            t = clamp(t, 0, Math.max(0, window.innerHeight - h));
+            previewWinLeft = l;
+            previewWinTop = t;
+            pop.style.width = `${w}px`;
+            pop.style.height = `${h}px`;
+            apply();
+          }
+          function onUp() {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
+          }
+          window.addEventListener("pointermove", onMove);
+          window.addEventListener("pointerup", onUp);
+          window.addEventListener("pointercancel", onUp);
+        });
+      });
+    }
+
+    // 悬浮窗默认高度上限：不超过「刷新预览」按钮行（见 updatePreviewMaxHeight）。
+    // 按钮行在 zoom 子树的 shell 内，getBoundingClientRect 返回缩放前布局坐标，
+    // 乘 .shell 的 zoom 才是真实视口位置；悬浮窗是 fixed（非 zoom 空间），限高用真实像素。
+    function updatePreviewMaxHeight() {
+      const row = document.getElementById("action-row");
+      if (!row || !pop) {
+        return;
+      }
+      const shell = document.querySelector(".shell");
+      const zoom = shell ? parseFloat(getComputedStyle(shell).zoom) || 1 : 1;
+      const rowBottom = row.getBoundingClientRect().bottom * zoom;
+      // 悬浮窗定位 bottom:20px，顶边须不低于按钮行底边 → 高度上限 = 视口高 - 20 - rowBottom
+      const maxH = Math.floor(window.innerHeight - 20 - rowBottom);
+      // 视口矮时至少保留最小可用高度（此时允许盖过按钮行，保证悬浮窗可用）
+      const limit = Math.max(maxH, Math.min(MIN_H, window.innerHeight - 40));
+      pop.style.setProperty("--preview-max-h", `${Math.min(limit, 760)}px`);
+    }
+
+    updatePreviewMaxHeight();
+    // 初始定位等价于原 CSS 的 right:20 bottom:20
+    previewWinLeft = window.innerWidth - pop.offsetWidth - 20;
+    previewWinTop = window.innerHeight - pop.offsetHeight - 20;
+    apply();
+    bindDrag();
+    bindResize();
+    window.addEventListener("resize", () => {
+      updatePreviewMaxHeight();
+      fitViewport();
+    });
+  }
+
+  // 缩小/展开悬浮窗。缩小时可传入鼠标坐标 anchor：把缩出来的小悬浮条移到光标处
+  // （以其中心对准光标），让鼠标可以不移动再点一下展开
+  function setPreviewPopoverMinimized(minimized, anchor = null) {
+    const isMin = !!minimized;
+    ui.previewPopover.classList.toggle("is-minimized", isMin);
+    ui.previewPopoverMin.innerHTML = isMin ? ICON_EXPAND : ICON_MIN;
+    ui.previewPopoverMin.title = isMin ? "展开悬浮窗" : "缩小悬浮窗";
+    if (isMin) {
+      // 记住缩小前的位置，展开时原样恢复
+      previewWinRestoreLeft = previewWinLeft;
+      previewWinRestoreTop = previewWinTop;
+      if (anchor && Number.isFinite(anchor.x) && Number.isFinite(anchor.y)) {
+        const w = ui.previewPopover.offsetWidth;
+        const h = ui.previewPopover.offsetHeight;
+        previewWinLeft = Math.min(
+          Math.max(anchor.x - w / 2, 0),
+          Math.max(0, window.innerWidth - w)
+        );
+        previewWinTop = Math.min(
+          Math.max(anchor.y - h / 2, 0),
+          Math.max(0, window.innerHeight - h)
+        );
+        ui.previewPopover.style.left = `${previewWinLeft}px`;
+        ui.previewPopover.style.top = `${previewWinTop}px`;
+      }
+    } else if (previewWinRestoreLeft != null) {
+      // 展开：恢复成缩小前的位置，并钳制在视口内，避免窗口跑到页面外
+      const w = ui.previewPopover.offsetWidth;
+      const h = ui.previewPopover.offsetHeight;
+      previewWinLeft = Math.min(
+        Math.max(previewWinRestoreLeft, 0),
+        Math.max(0, window.innerWidth - w)
+      );
+      previewWinTop = Math.min(
+        Math.max(previewWinRestoreTop, 0),
+        Math.max(0, window.innerHeight - h)
+      );
+      previewWinRestoreLeft = null;
+      previewWinRestoreTop = null;
+      ui.previewPopover.style.left = `${previewWinLeft}px`;
+      ui.previewPopover.style.top = `${previewWinTop}px`;
+    }
+    // 展开后恢复渲染器尺寸并重绘一帧（缩小态舞台 display:none，尺寸为 0）
+    if (!isMin && preview3d.renderer) {
+      requestAnimationFrame(() => {
+        resizePreviewRenderer();
+        requestPreviewRender();
+      });
+    }
+  }
+
+  // ==================== 主题（白天 / 夜间） ====================
+  const ICON_SUN = '<svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="9" r="3.4"/><path d="M9 2v2M9 14v2M2 9h2M14 9h2M3.9 3.9l1.5 1.5M12.6 12.6l1.5 1.5M14.1 3.9l-1.5 1.5M5.4 12.6l-1.5 1.5"/></svg>';
+  const ICON_MOON = '<svg width="16" height="16" viewBox="0 0 18 18" fill="currentColor"><path d="M14.7 11.2a6.3 6.3 0 0 1-7.9-7.9A6.3 6.3 0 1 0 14.7 11.2z"/></svg>';
+  const ICON_MIN = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3.5 8h9"/></svg>';
+  const ICON_EXPAND = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4l5 6.5H3z"/></svg>';
+  let currentTheme = "dark";
+
+  function applyTheme(theme) {
+    currentTheme = theme === "light" ? "light" : "dark";
+    document.documentElement.dataset.theme = currentTheme;
+    ui.themeToggle.innerHTML = currentTheme === "light" ? ICON_MOON : ICON_SUN;
+    ui.themeToggle.title = currentTheme === "light" ? "切换到夜间模式" : "切换到白天模式";
+  }
+
+  function toggleTheme() {
+    const next = currentTheme === "dark" ? "light" : "dark";
+    try {
+      localStorage.setItem("model2mc-theme", next);
+    } catch (error) {
+      // localStorage 不可用时仅在本次会话生效
+    }
+    applyTheme(next);
+  }
+
+  // ==================== 文件选择弹窗（浏览模型路径） ====================
+  const ICON_FOLDER = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.75C1.5 3.06 2.06 2.5 2.75 2.5h3.09c.4 0 .78.16 1.06.44l.7.7c.28.28.66.44 1.06.44h4.34c.69 0 1.25.56 1.25 1.25v6.92c0 .69-.56 1.25-1.25 1.25H2.75c-.69 0-1.25-.56-1.25-1.25V3.75z"/></svg>';
+  const ICON_FILE = '<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1.75c0-.414.336-.75.75-.75h4.16c.2 0 .39.08.53.22l3.34 3.34c.14.14.22.33.22.53v8.71c0 .414-.34.75-.75.75H3.75A.75.75 0 0 1 3 14.25V1.75z"/></svg>';
+  // 各字段允许的文件后缀，默认只显示匹配文件；可勾选「显示全部文件」
+  const FILE_PICKER_EXTS = {
+    obj: [".obj"],
+    mtl: [".mtl"],
+    texture: [".png", ".jpg", ".jpeg", ".webp", ".tga"]
+  };
+  const filePicker = {
+    modelIndex: -1,
+    field: "",
+    currentPath: "",
+    parentPath: "",
+    selected: null
+  };
+
+  function openFilePicker(modelIndex, field) {
+    filePicker.modelIndex = modelIndex;
+    filePicker.field = field;
+    filePicker.selected = null;
+    const label = field === "obj" ? "OBJ 文件" : (field === "mtl" ? "MTL 文件" : "贴图文件");
+    ui.filePickerTitle.textContent = `选择${label}`;
+    ui.filePickerOk.disabled = true;
+    const model = modelState[modelIndex];
+    const currentValue = model ? String(model[field] || "").trim() : "";
+    // 起始目录：当前值所在的目录；空值则从磁盘根开始
+    let start = "";
+    if (currentValue) {
+      const sep = currentValue.includes("/") ? "/" : "\\";
+      const lastSep = currentValue.lastIndexOf(sep);
+      if (lastSep > 0) {
+        start = currentValue.slice(0, lastSep);
+      }
+    }
+    loadFilePickerDir(start, currentValue);
+    toggleFilePicker(true);
+  }
+
+  function toggleFilePicker(open) {
+    ui.filePickerModal.hidden = !open;
+  }
+
+  async function loadFilePickerDir(path, highlightPath) {
+    ui.filePickerStatus.textContent = "加载中...";
+    filePicker.selected = null;
+    ui.filePickerOk.disabled = true;
+    try {
+      const data = await api(`/api/list-dir?path=${encodeURIComponent(path || "")}`);
+      filePicker.currentPath = data.path || "";
+      filePicker.parentPath = data.parent || "";
+      filePicker.entries = Array.isArray(data.entries) ? data.entries : [];
+      ui.filePickerPath.textContent = filePicker.currentPath || "选择磁盘";
+      ui.filePickerPath.title = filePicker.currentPath;
+      ui.filePickerPathInput.value = filePicker.currentPath;
+      ui.filePickerUp.disabled = !filePicker.parentPath;
+      renderFilePickerList(highlightPath);
+      ui.filePickerStatus.textContent = filePicker.entries.length
+        ? `${filePicker.entries.length} 项`
+        : "空目录";
+      return true;
+    } catch (error) {
+      ui.filePickerStatus.textContent = error.message;
+      renderFilePickerList();
+      return false;
+    }
+  }
+
+  // 粘贴/输入目录路径回车或点「跳转」：优先按目录加载；若是文件路径则跳到其所在目录
+  async function jumpFilePickerTo(value) {
+    const target = String(value || "").trim();
+    if (!target) {
+      return;
+    }
+    const ok = await loadFilePickerDir(target);
+    if (!ok) {
+      const sep = target.includes("/") ? "/" : "\\";
+      const lastSep = target.lastIndexOf(sep);
+      if (lastSep > 0) {
+        loadFilePickerDir(target.slice(0, lastSep));
+      }
+    }
+  }
+
+  function renderFilePickerList(highlightPath) {
+    const list = ui.filePickerList;
+    list.innerHTML = "";
+    const exts = FILE_PICKER_EXTS[filePicker.field] || [];
+    const showAll = !!ui.filePickerAll.checked;
+    let visible = 0;
+    filePicker.entries.forEach(entry => {
+      if (!entry.isDir && !showAll && exts.length
+          && !exts.some(ext => String(entry.name).toLowerCase().endsWith(ext))) {
+        return;
+      }
+      visible += 1;
+      const row = document.createElement("div");
+      row.className = "file-picker-item" + (entry.isDir ? " file-picker-dir" : " file-picker-file");
+      const icon = document.createElement("span");
+      icon.className = "file-picker-icon";
+      icon.innerHTML = entry.isDir ? ICON_FOLDER : ICON_FILE;
+      const name = document.createElement("span");
+      name.className = "file-picker-name";
+      name.textContent = entry.name;
+      name.title = entry.path;
+      row.append(icon, name);
+      // 当前输入值对应的文件自动预选中
+      if (!entry.isDir && highlightPath && entry.path === highlightPath) {
+        filePicker.selected = entry;
+        ui.filePickerOk.disabled = false;
+        row.classList.add("selected");
+      }
+      row.addEventListener("click", () => {
+        if (entry.isDir) {
+          loadFilePickerDir(entry.path);
+          return;
+        }
+        filePicker.selected = entry;
+        Array.from(list.children).forEach(child => child.classList.remove("selected"));
+        row.classList.add("selected");
+        ui.filePickerStatus.textContent = entry.path;
+        ui.filePickerOk.disabled = false;
+      });
+      row.addEventListener("dblclick", () => {
+        if (!entry.isDir) {
+          filePicker.selected = entry;
+          confirmFilePicker();
+        }
+      });
+      list.appendChild(row);
+    });
+    if (!visible) {
+      const empty = document.createElement("div");
+      empty.className = "file-picker-item";
+      empty.style.opacity = "0.6";
+      empty.style.cursor = "default";
+      empty.textContent = showAll ? "（空目录）" : "（该目录下没有匹配的文件类型）";
+      list.appendChild(empty);
+    }
+  }
+
+  /** 写入某个模型字段的路径输入框并触发保存/校验（由卡片输入的现有监听器处理） */
+  function setModelPath(modelIndex, field, path) {
+    if (modelIndex < 0 || !path) {
+      return;
+    }
+    const card = modelCards[modelIndex];
+    const input = card ? card.querySelector(`[data-model-field="${field}"]`) : null;
+    if (input) {
+      input.value = path;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+
+  // 选中 OBJ 后在同目录一次性找 MTL 与贴图并回填（同名前缀优先）
+  async function autoFillSiblingPaths(objPath) {
+    const sep = objPath.includes("/") ? "/" : "\\";
+    const lastSep = objPath.lastIndexOf(sep);
+    if (lastSep <= 0) {
+      return;
+    }
+    const dir = objPath.slice(0, lastSep);
+    const base = objPath.slice(lastSep + 1).replace(/\.[^.]+$/, "").toLowerCase();
+    const data = await api(`/api/list-dir?path=${encodeURIComponent(dir)}`).catch(() => null);
+    if (!data || !Array.isArray(data.entries)) {
+      return;
+    }
+    const mtls = [];
+    const images = [];
+    data.entries.forEach(entry => {
+      if (entry.isDir) {
+        return;
+      }
+      const low = String(entry.name).toLowerCase();
+      if (low.endsWith(".mtl")) {
+        mtls.push(entry);
+      } else if (FILE_PICKER_EXTS.texture.some(ext => low.endsWith(ext))) {
+        images.push(entry);
+      }
+    });
+    const pickSameBase = list => {
+      const same = list.find(item => String(item.name).toLowerCase().replace(/\.[^.]+$/, "") === base);
+      return (same || list[0])?.path || "";
+    };
+    const mtlPath = pickSameBase(mtls);
+    const texturePath = pickSameBase(images);
+    if (mtlPath) {
+      setModelPath(filePicker.modelIndex, "mtl", mtlPath);
+    }
+    if (texturePath) {
+      setModelPath(filePicker.modelIndex, "texture", texturePath);
+    }
+    if (!mtlPath && !texturePath) {
+      ui.previewSummary.textContent = "已选择 OBJ，但同目录未找到对应的 MTL 或贴图文件，可手动点「浏览…」补选。";
+    }
+  }
+
+  function confirmFilePicker() {
+    if (!filePicker.selected) {
+      return;
+    }
+    const pickedPath = filePicker.selected.path;
+    const pickedField = filePicker.field;
+    setModelPath(filePicker.modelIndex, pickedField, pickedPath);
+    toggleFilePicker(false);
+    // 选中 OBJ 后自动补同目录的 MTL 与贴图（同名优先）
+    if (pickedField === "obj") {
+      autoFillSiblingPaths(pickedPath).catch(handleError);
+    }
+  }
+
+  function bindEvents() {
+    ui.tabWrite.addEventListener("click", () => setMode("write"));
+    ui.tabExport.addEventListener("click", () => setMode("export"));
+    ui.runButton.addEventListener("click", () => startTask("/api/run", "写入").catch(handleError));
+    ui.exportLitematicButton.addEventListener("click", () => startTask("/api/export", "Litematica 导出", { format: "litematic" }).catch(handleError));
+    ui.previewButton.addEventListener("click", () => refreshPreview(true).catch(handleError).finally(() => {
+      syncActionAvailability();
+    }));
+    // 悬浮窗里的操作按钮：复用主区按钮的实际事件（刷新预览 / 开始写入 / 导出投影）
+    if (ui.previewPopoverRefresh) {
+      ui.previewPopoverRefresh.addEventListener("click", () => ui.previewButton.click());
+    }
+    if (ui.previewPopoverRun) {
+      ui.previewPopoverRun.addEventListener("click", () => ui.runButton.click());
+    }
+    if (ui.previewPopoverExport) {
+      ui.previewPopoverExport.addEventListener("click", () => ui.exportLitematicButton.click());
+    }
+    ui.resetButton.addEventListener("click", () => resetParameters().catch(handleError));
+    if (ui.fullscreenButton) {
+      ui.fullscreenButton.addEventListener("click", toggleFullscreen);
+      document.addEventListener("fullscreenchange", syncFullscreenButton);
+      document.addEventListener("webkitfullscreenchange", syncFullscreenButton);
+    }
+    if (ui.gizmoMoveButton) {
+      ui.gizmoMoveButton.addEventListener("click", () => setGizmoMode("move"));
+    }
+    if (ui.gizmoRotateButton) {
+      ui.gizmoRotateButton.addEventListener("click", () => setGizmoMode("rotate"));
+    }
+    ui.previewToggleButton.addEventListener("click", () => setPreviewPopover(!previewPopoverOpen));
+    ui.previewPopoverClose.addEventListener("click", () => setPreviewPopover(false));
+    ui.previewPopoverMin.addEventListener("click", event => {
+      const minimized = !ui.previewPopover.classList.contains("is-minimized");
+      setPreviewPopoverMinimized(minimized, { x: event.clientX, y: event.clientY });
+    });
+    if (ui.showModel) {
+      ui.showModel.addEventListener("change", () => {
+        if (lastPreviewData) {
+          renderPreview(lastPreviewData).catch(handleError);
+        }
+      });
+    }
+    ui.editPaletteButton.addEventListener("click", () => {
+      openPaletteEditor(form.paletteProfile.value).catch(handleError);
+    });
+    ui.generatePaletteButton.addEventListener("click", handleGeneratePaletteClick);
+    ui.generatedSaveApply.addEventListener("click", confirmGeneratePalette);
+    ui.generatedSaveOnly.addEventListener("click", () => toggleGenerateDialog(false));
+    ui.generatedSaveClose.addEventListener("click", () => toggleGenerateDialog(false));
+    ui.generatedSaveName.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        confirmGeneratePalette();
+      }
+    });
+    ui.generatedSaveModal.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        toggleGenerateDialog(false);
+      }
+    });
+    ui.filePickerClose.addEventListener("click", () => toggleFilePicker(false));
+    ui.filePickerCancel.addEventListener("click", () => toggleFilePicker(false));
+    ui.filePickerUp.addEventListener("click", () => {
+      if (filePicker.parentPath) {
+        loadFilePickerDir(filePicker.parentPath);
+      }
+    });
+    ui.filePickerRefresh.addEventListener("click", () => loadFilePickerDir(filePicker.currentPath));
+    ui.filePickerAll.addEventListener("change", () => renderFilePickerList());
+    ui.filePickerOk.addEventListener("click", confirmFilePicker);
+    ui.filePickerPathGo.addEventListener("click", () => jumpFilePickerTo(ui.filePickerPathInput.value));
+    ui.filePickerPathInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        jumpFilePickerTo(ui.filePickerPathInput.value);
+      }
+    });
+    ui.themeToggle.addEventListener("click", toggleTheme);
+    ui.filePickerModal.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        toggleFilePicker(false);
+      } else if (event.key === "Enter" && filePicker.selected && event.target !== ui.filePickerPathInput) {
+        event.preventDefault();
+        confirmFilePicker();
+      }
+    });
+    ui.palettePopoverClose.addEventListener("click", () => {
+      setPalettePopoverMinimized(false);
+      togglePalettePopover(false);
+    });
+    ui.palettePopoverMin.addEventListener("click", event => {
+      event.stopPropagation();
+      setPalettePopoverMinimized(!paletteEditor.minimized);
+    });
+    ui.palettePopoverOpenDir.addEventListener("click", () => {
+      openPaletteDirectory().catch(handleError);
+    });
+    ui.palettePopoverSave.addEventListener("click", () => {
+      savePaletteEditor().catch(error => {
+        handleError(error);
+      });
+    });
+    ui.palettePopoverAdd.addEventListener("click", () => {
+      paletteEditor.entries.push({ block: "", color: randomPaletteColor() });
+      renderPaletteEditor();
+      updatePaletteSaveButton();
+      setPaletteEditorStatus("已添加空白条目，填上方块后点「保存修改」写入映射文件");
+      const blockInputs = ui.palettePopoverList.querySelectorAll(".palette-popover-block input");
+      const lastInput = blockInputs[blockInputs.length - 1];
+      if (lastInput) {
+        lastInput.focus();
+      }
+    });
+    bindAutoCache();
+  }
+
+  function ensurePreviewRenderer() {
+    if (preview3d.renderer) {
+      return;
+    }
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0x000000, 0);
+    ui.previewStage.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.add(new THREE.AmbientLight(0xffffff, 1.35));
+
+    const sun = new THREE.DirectionalLight(0xffffff, 1.45);
+    sun.position.set(36, 64, 24);
+    scene.add(sun);
+
+    const fill = new THREE.DirectionalLight(0x8fb8ff, 0.45);
+    fill.position.set(-22, 28, -18);
+    scene.add(fill);
+
+    const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 4000);
+    camera.position.set(80, 90, 80);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, 0, 0);
+    controls.addEventListener("change", requestPreviewRender);
+
+    // 3D 软件式移动/旋转轴线：挂在「建筑枢轴组」上（renderPreview 会把模型网格放进该组）
+    const gizmoPivot = new THREE.Group();
+    scene.add(gizmoPivot);
+
+    const gizmo = new TransformControls(camera, renderer.domElement);
+    gizmo.setSize(0.9);
+    gizmo.addEventListener("change", requestPreviewRender);
+    gizmo.addEventListener("dragging-changed", event => {
+      preview3d.gizmoDragging = event.value;
+      // 拖轴线时禁用轨道相机，避免两套操作互相抢事件
+      controls.enabled = !event.value;
+      if (!event.value && preview3d.gizmoDirty) {
+        preview3d.lastGizmoDragEnd = Date.now();
+        // 松手才走完整联动（持久化缓存 + 校验 + 提示），拖动过程只轻量同步输入框
+        onAnyFieldChange();
+        const label = preview3d.selectedModel != null ? `模型 ${preview3d.selectedModel + 1} 的` : "";
+        ui.previewSummary.textContent = `轴线已调整${label}放置/旋转参数。点击「刷新预览」重新体素化生效。`;
+      }
+    });
+    gizmo.addEventListener("objectChange", () => {
+      if (!preview3d.gizmoDragging) {
+        return;
+      }
+      preview3d.gizmoDirty = true;
+      syncGizmoToForm();
+      updateSelectionHelper();
+      requestPreviewRender();
+    });
+    scene.add(gizmo.getHelper());
+
+    preview3d.gizmo = gizmo;
+    preview3d.gizmoPivot = gizmoPivot;
+    preview3d.gizmoCenter = new THREE.Vector3();
+
+    preview3d.renderer = renderer;
+    preview3d.scene = scene;
+    preview3d.camera = camera;
+    preview3d.controls = controls;
+    preview3d.raycaster = new THREE.Raycaster();
+    preview3d.resizeObserver = new ResizeObserver(() => resizePreviewRenderer());
+    preview3d.resizeObserver.observe(ui.previewStage);
+    renderer.domElement.addEventListener("click", event => {
+      handlePreviewStageClick(event).catch(handleError);
+    });
+    renderer.domElement.addEventListener("pointermove", handlePreviewStagePointerMove);
+    renderer.domElement.addEventListener("pointerleave", () => {
+      renderer.domElement.style.cursor = "";
+    });
+
+    resizePreviewRenderer();
+    animatePreview();
+  }
+
+  function resizePreviewRenderer() {
+    if (!preview3d.renderer) {
+      return;
+    }
+    const width = Math.max(1, ui.previewStage.clientWidth);
+    const height = Math.max(1, ui.previewStage.clientHeight);
+    preview3d.renderer.setSize(width, height, false);
+    preview3d.camera.aspect = width / height;
+    preview3d.camera.updateProjectionMatrix();
+    requestPreviewRender();
+  }
+
+  function requestPreviewRender() {
+    preview3d.needsRender = true;
+  }
+
+  // 按需渲染：千万级三角形的模型每帧重绘会持续占满 GPU；只在相机移动（含阻尼收敛）或场景变化时才画
+  function animatePreview() {
+    requestAnimationFrame(animatePreview);
+    if (!preview3d.renderer) {
+      return;
+    }
+    const controlsActive = preview3d.controls ? preview3d.controls.update() : false;
+    if (controlsActive || preview3d.needsRender) {
+      preview3d.needsRender = false;
+      preview3d.renderer.render(preview3d.scene, preview3d.camera);
+    }
+  }
+
+  function disposeGroup(group) {
+    group.traverse(object => {
+      if (object.geometry) {
+        object.geometry.dispose();
+      }
+      if (Array.isArray(object.material)) {
+        object.material.forEach(material => material.dispose());
+      } else if (object.material) {
+        object.material.dispose();
+      }
+    });
+  }
+
+  function clearPreviewGroup() {
+    clearGizmoPivot();
+    if (!preview3d.group) {
+      preview3d.columnIndex = null;
+      preview3d.blockTable = null;
+      preview3d.buildingBoxes = null;
+      return;
+    }
+    preview3d.scene.remove(preview3d.group);
+    disposeGroup(preview3d.group);
+    preview3d.group = null;
+    preview3d.columnIndex = null;
+    preview3d.blockTable = null;
+    preview3d.buildingBoxes = null;
+    requestPreviewRender();
+    if (preview3d.renderer) {
+      preview3d.renderer.domElement.style.cursor = "";
+    }
+  }
+
+  /** 清空轴线枢轴组（模型网格已随预览重建），并把轴线摘下、变换归零、清除选中状态。 */
+  function clearGizmoPivot() {
+    if (preview3d.gizmo) {
+      preview3d.gizmo.detach();
+    }
+    if (preview3d.gizmoPivot) {
+      disposeGroup(preview3d.gizmoPivot);
+      while (preview3d.gizmoPivot.children.length) {
+        preview3d.gizmoPivot.remove(preview3d.gizmoPivot.children[0]);
+      }
+      preview3d.gizmoPivot.position.set(0, 0, 0);
+      preview3d.gizmoPivot.quaternion.identity();
+    }
+    preview3d.gizmoBase = null;
+    preview3d.gizmoDirty = false;
+    preview3d.modelPivots = [];
+    preview3d.perModelPivots = false;
+    preview3d.selectedModel = null;
+    removeSelectionHelper();
+    clearModelCardHighlight();
+    updateGizmoButtons();
+  }
+
+  // ===== 3D 软件式移动/旋转轴线（TransformControls）与参数联动 =====
+
+  /** 渲染时刻各模型参数快照：轴线总变换（平移+绕中心旋转）始终基于该快照叠加。 */
+  function captureGizmoBase() {
+    return modelState.map(model => ({
+      x: Number(model.x) || 0,
+      y: Number(model.y) || 0,
+      z: Number(model.z) || 0,
+      rotX: Number(model.rotationX) || 0,
+      rotY: Number(model.rotationY) || 0,
+      rotZ: Number(model.rotationZ) || 0
+    }));
+  }
+
+  function setModelFieldValue(index, field, value) {
+    const model = modelState[index];
+    if (model) {
+      model[field] = value;
+    }
+    const card = modelCards[index];
+    const input = card ? card.querySelector(`[data-model-field="${field}"]`) : null;
+    if (input) {
+      input.value = value;
+    }
+  }
+
+  function normalizeDegrees(deg) {
+    return ((Math.round(deg) % 360) + 360) % 360;
+  }
+
+  /**
+   * 轴线拖动 → 参数写回。
+   * 多模型：只作用于被点选的模型（绕它自己的包围盒中心刚体变换）。
+   * 单模型/旧缓存（无模型游程分段信息）：平移=每个模型放置点+轴线位移；旋转=把
+   * 「绕建筑中心的刚体旋转」复合到每个模型（放置点绕中心旋转 + 朝向按四元数复合后
+   * 分解为 ZYX 欧拉角，与服务端 X→Y→Z 顶点旋转一致）。
+   */
+  function syncGizmoToForm() {
+    if (preview3d.perModelPivots) {
+      syncSelectedModelGizmoToForm();
+      return;
+    }
+    const pivot = preview3d.gizmoPivot;
+    const base = preview3d.gizmoBase;
+    const center = preview3d.gizmoCenter;
+    if (!pivot || !base || !center || base.length !== modelState.length) {
+      return;
+    }
+    const q = pivot.quaternion;
+    const rotated = q.x !== 0 || q.y !== 0 || q.z !== 0;
+    const tmp = new THREE.Vector3();
+    const qTotal = q.clone();
+    const qBase = new THREE.Quaternion();
+    const qNew = new THREE.Quaternion();
+    const euler = new THREE.Euler(0, 0, 0, "ZYX");
+    // 场景原点：放置点（表单=世界坐标）先换到场景坐标旋转，再换回世界坐标写表单
+    const origin = preview3d.previewOrigin || { x: 0, y: 0, z: 0 };
+    modelState.forEach((model, index) => {
+      const b = base[index];
+      if (!b) {
+        return;
+      }
+      // 放置点跟随整体刚体变换：p' = 轴线位置 + q·(p - 中心)（均在场景坐标系）
+      tmp.set(b.x - origin.x, b.y - origin.y, b.z - origin.z)
+        .sub(center).applyQuaternion(qTotal).add(pivot.position);
+      setModelFieldValue(index, "x", String(Math.round(tmp.x + origin.x)));
+      setModelFieldValue(index, "y", String(Math.round(tmp.y + origin.y)));
+      setModelFieldValue(index, "z", String(Math.round(tmp.z + origin.z)));
+      if (rotated) {
+        // 服务端按 X→Y→Z 顺序做固定系旋转，等价于 three.js 内在 'ZYX' 欧拉序
+        qBase.setFromEuler(new THREE.Euler(
+          THREE.MathUtils.degToRad(b.rotX),
+          THREE.MathUtils.degToRad(b.rotY),
+          THREE.MathUtils.degToRad(b.rotZ),
+          "ZYX"
+        ));
+        qNew.copy(qTotal).multiply(qBase);
+        euler.setFromQuaternion(qNew, "ZYX");
+        setModelFieldValue(index, "rotationX", String(normalizeDegrees(THREE.MathUtils.radToDeg(euler.x))));
+        setModelFieldValue(index, "rotationY", String(normalizeDegrees(THREE.MathUtils.radToDeg(euler.y))));
+        setModelFieldValue(index, "rotationZ", String(normalizeDegrees(THREE.MathUtils.radToDeg(euler.z))));
+      }
+    });
+  }
+
+  /** 多模型模式：轴线拖动只写回被选中模型的参数（绕它自己的包围盒中心刚体变换）。 */
+  function syncSelectedModelGizmoToForm() {
+    const index = preview3d.selectedModel;
+    const pivot = index != null ? preview3d.modelPivots[index] : null;
+    const base = preview3d.gizmoBase;
+    const b = pivot && base ? base[index] : null;
+    const center = pivot ? pivot.userData.center : null;
+    if (!pivot || !b || !center) {
+      return;
+    }
+    const q = pivot.quaternion;
+    const rotated = q.x !== 0 || q.y !== 0 || q.z !== 0;
+    const tmp = new THREE.Vector3();
+    // 场景原点：放置点（表单=世界坐标）先换到场景坐标旋转，再换回世界坐标写表单
+    const origin = preview3d.previewOrigin || { x: 0, y: 0, z: 0 };
+    // 放置点跟随该模型的刚体变换：p' = 轴线位置 + q·(p - 模型中心)（均在场景坐标系）
+    tmp.set(b.x - origin.x, b.y - origin.y, b.z - origin.z)
+      .sub(center).applyQuaternion(q).add(pivot.position);
+    setModelFieldValue(index, "x", String(Math.round(tmp.x + origin.x)));
+    setModelFieldValue(index, "y", String(Math.round(tmp.y + origin.y)));
+    setModelFieldValue(index, "z", String(Math.round(tmp.z + origin.z)));
+    if (rotated) {
+      // 服务端按 X→Y→Z 顺序做固定系旋转，等价于 three.js 内在 'ZYX' 欧拉序
+      const qBase = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+        THREE.MathUtils.degToRad(b.rotX),
+        THREE.MathUtils.degToRad(b.rotY),
+        THREE.MathUtils.degToRad(b.rotZ),
+        "ZYX"
+      ));
+      const qNew = q.clone().multiply(qBase);
+      const euler = new THREE.Euler().setFromQuaternion(qNew, "ZYX");
+      setModelFieldValue(index, "rotationX", String(normalizeDegrees(THREE.MathUtils.radToDeg(euler.x))));
+      setModelFieldValue(index, "rotationY", String(normalizeDegrees(THREE.MathUtils.radToDeg(euler.y))));
+      setModelFieldValue(index, "rotationZ", String(normalizeDegrees(THREE.MathUtils.radToDeg(euler.z))));
+    }
+  }
+
+  /** 切换轴线模式：再次点击同一按钮 = 关闭轴线。多模型时开启后需先点选模型。 */
+  function setGizmoMode(mode) {
+    const prevMode = preview3d.gizmoMode;
+    preview3d.gizmoMode = preview3d.gizmoMode === mode ? null : mode;
+    if (!preview3d.gizmoMode && prevMode) {
+      // 关闭轴线：清掉选中状态（模型枢轴与网格保留，只是不再跟随轴线）
+      preview3d.selectedModel = null;
+      removeSelectionHelper();
+      clearModelCardHighlight();
+    }
+    attachGizmoIfPossible();
+    updateGizmoButtons();
+    if (preview3d.gizmoMode && preview3d.perModelPivots && preview3d.selectedModel == null) {
+      ui.previewSummary.textContent = preview3d.gizmoMode === "move"
+        ? "已开启移动模式：点击预览中的模型选中它，再拖动箭头调整该模型位置。"
+        : "已开启旋转模式：点击预览中的模型选中它，再拖动圆环调整该模型角度。";
+    }
+    requestPreviewRender();
+  }
+
+  function attachGizmoIfPossible() {
+    const gizmo = preview3d.gizmo;
+    if (!gizmo) {
+      return;
+    }
+    if (preview3d.gizmoMode && preview3d.gizmoPivot && preview3d.gizmoPivot.children.length) {
+      gizmo.setMode(preview3d.gizmoMode === "move" ? "translate" : "rotate");
+      if (preview3d.perModelPivots) {
+        // 多模型：轴线只挂在被点选的模型枢轴上；未选中时不挂
+        const pivot = preview3d.selectedModel != null ? preview3d.modelPivots[preview3d.selectedModel] : null;
+        if (pivot) {
+          gizmo.attach(pivot);
+        } else {
+          gizmo.detach();
+        }
+      } else {
+        gizmo.attach(preview3d.gizmoPivot);
+      }
+    } else {
+      gizmo.detach();
+    }
+  }
+
+  function updateGizmoButtons() {
+    const available = !!(preview3d.gizmoPivot && preview3d.gizmoPivot.children.length);
+    if (ui.gizmoMoveButton) {
+      ui.gizmoMoveButton.disabled = !available;
+      ui.gizmoMoveButton.classList.toggle("active", preview3d.gizmoMode === "move");
+    }
+    if (ui.gizmoRotateButton) {
+      ui.gizmoRotateButton.disabled = !available;
+      ui.gizmoRotateButton.classList.toggle("active", preview3d.gizmoMode === "rotate");
+    }
+  }
+
+  /** 轴线操作期间/刚结束/已改动未刷新时，方块拾取坐标不可信，跳过拾取。 */
+  function gizmoBlocksPicking() {
+    if (!preview3d.gizmo) {
+      return false;
+    }
+    if (preview3d.gizmoDragging) {
+      return true;
+    }
+    if (preview3d.gizmo.axis) {
+      return true;
+    }
+    if (Date.now() - preview3d.lastGizmoDragEnd < 200) {
+      return true;
+    }
+    return !!(preview3d.gizmoMode && preview3d.gizmoDirty);
+  }
+
+  // ===== 多模型点选：轴线开启时点击预览里的模型，选中单个模型 =====
+
+  /**
+   * 视线与各模型包围盒求交（≤64 个模型，逐盒 ray.intersectBox 毫秒级），
+   * 命中距离最近的模型即选中。包围盒含模型内部空隙，比逐方块 DDA 更容易点中。
+   */
+  function selectModelFromClick(event) {
+    if (!preview3d.perModelPivots || !preview3d.modelPivots.length
+      || !preview3d.renderer || !preview3d.camera || !preview3d.raycaster) {
+      return;
+    }
+    const rect = preview3d.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      return;
+    }
+    preview3d.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    preview3d.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    preview3d.raycaster.setFromCamera(preview3d.pointer, preview3d.camera);
+    const ray = preview3d.raycaster.ray;
+    const box = new THREE.Box3();
+    const point = new THREE.Vector3();
+    let best = -1;
+    let bestDistance = Infinity;
+    preview3d.modelPivots.forEach((pivot, index) => {
+      const localBounds = pivot.userData.localBounds;
+      if (!localBounds) {
+        return;
+      }
+      pivot.updateWorldMatrix(true, false);
+      box.copy(localBounds).applyMatrix4(pivot.matrixWorld);
+      if (ray.intersectBox(box, point)) {
+        const distance = ray.origin.distanceTo(point);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = index;
+        }
+      }
+    });
+    if (best >= 0) {
+      selectModel(best);
+    } else {
+      ui.previewSummary.textContent = "没有点中任何模型。请点击模型所在的位置（按包围盒判断，含模型内部空隙）。";
+    }
+  }
+
+  /** 选中模型：挂轴线、画选中框、高亮左侧配置卡片。 */
+  function selectModel(index) {
+    preview3d.selectedModel = index;
+    attachGizmoIfPossible();
+    updateSelectionHelper();
+    highlightModelCard(index);
+    ui.previewSummary.textContent = `已选中模型 ${index + 1}：拖动轴线调整该模型的放置/旋转，左侧「模型 ${index + 1}」卡片已高亮；松手后点击「刷新预览」生效。`;
+    requestPreviewRender();
+  }
+
+  /** 选中模型外框（黄色）：随轴线拖动实时跟随。 */
+  function updateSelectionHelper() {
+    const pivot = preview3d.selectedModel != null ? preview3d.modelPivots[preview3d.selectedModel] : null;
+    if (!pivot || !preview3d.gizmoMode || !preview3d.scene) {
+      removeSelectionHelper();
+      return;
+    }
+    if (!preview3d.selectionHelper) {
+      preview3d.selectionBox = new THREE.Box3();
+      preview3d.selectionHelper = new THREE.Box3Helper(preview3d.selectionBox, 0xffc107);
+      preview3d.selectionHelper.material.depthTest = false;
+      preview3d.selectionHelper.material.transparent = true;
+      preview3d.scene.add(preview3d.selectionHelper);
+    }
+    pivot.updateWorldMatrix(true, false);
+    preview3d.selectionBox.copy(pivot.userData.localBounds).applyMatrix4(pivot.matrixWorld);
+  }
+
+  function removeSelectionHelper() {
+    if (preview3d.selectionHelper && preview3d.scene) {
+      preview3d.scene.remove(preview3d.selectionHelper);
+      preview3d.selectionHelper.geometry.dispose();
+      preview3d.selectionHelper.material.dispose();
+    }
+    preview3d.selectionHelper = null;
+    preview3d.selectionBox = null;
+  }
+
+  /**
+   * 建筑列索引：把每个盒子按 (x,z) 占用列展开，key = x * 65536 + z → [boxIndex, ...]。
+   * 盒子的列展开总数等于合并前的游程数（每条游程恰贡献一列），内存与逐游程版持平；
+   * DDA 命中格子后用 boxIndex 反查盒子取 y 范围与方块。
+   */
+  function buildBuildingColumnIndex(boxes) {
+    // building 数据来自 Web Worker 的 Int32Array（或同步兜底的普通数组），不能只认 Array.isArray
+    if (!boxes || typeof boxes.length !== "number" || boxes.length === 0) {
+      return null;
+    }
+    const index = new Map();
+    for (let i = 0; i < boxes.length; i += 7) {
+      const x = boxes[i];
+      const z = boxes[i + 2];
+      const sx = Math.max(1, boxes[i + 3]);
+      const sz = Math.max(1, boxes[i + 5]);
+      const boxIndex = i / 7;
+      for (let dx = 0; dx < sx; dx += 1) {
+        const rowKey = (x + dx) * 65536;
+        for (let dz = 0; dz < sz; dz += 1) {
+          const key = rowKey + z + dz;
+          let list = index.get(key);
+          if (!list) {
+            list = [];
+            index.set(key, list);
+          }
+          list.push(boxIndex);
+        }
+      }
+    }
+    return index;
+  }
+
+  /**
+   * 惰性构建建筑列索引：渲染完成后不立即建（超大模型要花数秒），
+   * 等第一次悬停/点击拾取时再建，构建完提示进度条收尾并缓存。
+   */
+  function ensureBuildingColumnIndex() {
+    if (preview3d.buildingBoxes && preview3d.columnIndex == null) {
+      setPreviewProgress(null, "建立方块列索引...");
+      preview3d.columnIndex = buildBuildingColumnIndex(preview3d.buildingBoxes);
+      hidePreviewProgress();
+    }
+    return preview3d.columnIndex;
+  }
+
+  /**
+   * DDA 网格步进拾取：从相机沿视线逐格前进，命中第一个包含该格子的建筑盒子。
+   * 大模型（数百万实例）用 three.js 逐实例射线检测每次鼠标移动都要数秒，这里降到毫秒级。
+   * 盒子渲染为实心体，DDA 找到的第一个「格子在盒子内」的位置即视线进入点，与渲染几何一致。
+   */
+  function pickPreviewBuilding(event) {
+    if (!preview3d.renderer || !preview3d.camera || !preview3d.raycaster || !preview3d.buildingBoxes) {
+      return null;
+    }
+    if (!ensureBuildingColumnIndex()) {
+      return null;
+    }
+    const rect = preview3d.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      return null;
+    }
+    preview3d.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    preview3d.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    preview3d.raycaster.setFromCamera(preview3d.pointer, preview3d.camera);
+    const ray = preview3d.raycaster.ray;
+    const origin = ray.origin;
+    const dir = ray.direction;
+    let ix = Math.floor(origin.x);
+    let iy = Math.floor(origin.y);
+    let iz = Math.floor(origin.z);
+    const stepX = dir.x > 0 ? 1 : (dir.x < 0 ? -1 : 0);
+    const stepY = dir.y > 0 ? 1 : (dir.y < 0 ? -1 : 0);
+    const stepZ = dir.z > 0 ? 1 : (dir.z < 0 ? -1 : 0);
+    const tDeltaX = stepX !== 0 ? Math.abs(1 / dir.x) : Infinity;
+    const tDeltaY = stepY !== 0 ? Math.abs(1 / dir.y) : Infinity;
+    const tDeltaZ = stepZ !== 0 ? Math.abs(1 / dir.z) : Infinity;
+    let tMaxX = stepX !== 0 ? (stepX > 0 ? ix + 1 - origin.x : origin.x - ix) * tDeltaX : Infinity;
+    let tMaxY = stepY !== 0 ? (stepY > 0 ? iy + 1 - origin.y : origin.y - iy) * tDeltaY : Infinity;
+    let tMaxZ = stepZ !== 0 ? (stepZ > 0 ? iz + 1 - origin.z : origin.z - iz) * tDeltaZ : Infinity;
+    let t = 0;
+    // 相机可能离模型几千格；最多前进 3 万格、距离上限 2 万格
+    for (let guard = 0; guard < 30000; guard += 1) {
+      if (ix >= 0 && iz >= 0 && iz < 65536 && iy >= 0) {
+        const list = preview3d.columnIndex.get(ix * 65536 + iz);
+        if (list) {
+          const boxes = preview3d.buildingBoxes;
+          for (let j = 0; j < list.length; j += 1) {
+            const base = list[j] * 7;
+            const boxY = boxes[base + 1];
+            if (iy >= boxY && iy < boxY + boxes[base + 4]) {
+              const entry = preview3d.blockTable ? preview3d.blockTable[boxes[base + 6]] : null;
+              return { block: String((entry || {}).block || ""), position: [ix, iy, iz] };
+            }
+          }
+        }
+      }
+      if (tMaxX < tMaxY) {
+        if (tMaxX < tMaxZ) {
+          ix += stepX;
+          t = tMaxX;
+          tMaxX += tDeltaX;
+        } else {
+          iz += stepZ;
+          t = tMaxZ;
+          tMaxZ += tDeltaZ;
+        }
+      } else if (tMaxY < tMaxZ) {
+        iy += stepY;
+        t = tMaxY;
+        tMaxY += tDeltaY;
+      } else {
+        iz += stepZ;
+        t = tMaxZ;
+        tMaxZ += tDeltaZ;
+      }
+      if (t > 20000) {
+        break;
+      }
+    }
+    return null;
+  }
+
+  function handlePreviewStagePointerMove(event) {
+    if (!preview3d.renderer) {
+      return;
+    }
+    // 轴线拖动/悬停/已改动未刷新时，拾取坐标与画面不一致，跳过悬停检测
+    if (gizmoBlocksPicking()) {
+      preview3d.renderer.domElement.style.cursor = "";
+      return;
+    }
+    const hit = pickPreviewBuilding(event);
+    preview3d.renderer.domElement.style.cursor = hit ? "pointer" : "";
+  }
+
+  async function handlePreviewStageClick(event) {
+    if (event.button !== 0 || !ui.showModel.checked) {
+      return;
+    }
+    // 轴线拖动结束后的 click 不应触发方块编辑器；轴线改动未刷新前拾取坐标已过期
+    if (preview3d.gizmo && (preview3d.gizmoDragging || preview3d.gizmo.axis
+      || Date.now() - preview3d.lastGizmoDragEnd < 200)) {
+      return;
+    }
+    // 轴线模式开启时，点击预览用于点选单个模型（多模型时轴线只作用于被选模型）
+    if (preview3d.gizmoMode) {
+      selectModelFromClick(event);
+      return;
+    }
+    // 缩小状态下点方块不再弹出编辑器，提示先展开
+    if (paletteEditor.minimized) {
+      ui.previewSummary.textContent = "方块编辑器已缩小。点右上角「▴」展开后，才能点击方块替换。";
+      return;
+    }
+    const hit = pickPreviewBuilding(event);
+    const blockState = normalizePaletteBlockValue(hit?.block || "");
+    if (!blockState) {
+      return;
+    }
+    await openPaletteEditorForBlock(blockState);
+  }
+
+  /**
+   * 编辑放置坐标时按差值实时平移已渲染的模型网格，无需重新体素化。
+   * 结构：单模型 -> 建筑网格直接挂在 gizmoPivot（其 position = 建筑中心）；
+   * 多模型 -> 每个模型一个 modelPivot 挂在 gizmoPivot 下（position = 各模型中心）。
+   * 平移直接作用在对应枢轴的 position 上，网格相对枢轴几何不变。
+   */
+  function movePreviewModelTo(index, x, y, z) {
+    if (previewBusy || !preview3d.renderedCoords || !preview3d.buildingBoxes) {
+      return;
+    }
+    const old = preview3d.renderedCoords[index];
+    if (!old) {
+      return;
+    }
+    const dx = x - old.x;
+    const dy = y - old.y;
+    const dz = z - old.z;
+    let moved = false;
+    if (preview3d.perModelPivots && preview3d.modelPivots && preview3d.modelPivots[index]) {
+      const pivot = preview3d.modelPivots[index];
+      if (pivot.children.length) {
+        pivot.position.x += dx;
+        pivot.position.y += dy;
+        pivot.position.z += dz;
+        moved = true;
+      }
+    } else if (preview3d.gizmoPivot && preview3d.gizmoPivot.children.length) {
+      preview3d.gizmoPivot.position.x += dx;
+      preview3d.gizmoPivot.position.y += dy;
+      preview3d.gizmoPivot.position.z += dz;
+      moved = true;
+    }
+    if (moved || dx !== 0 || dy !== 0 || dz !== 0) {
+      preview3d.renderedCoords[index] = { x, y, z };
+      // 网格平移后列索引拾取的对齐信息过期，但几何位置正确；置 dirty 供状态一致
+      preview3d.gizmoDirty = true;
+      requestPreviewRender();
+    }
+  }
+
+  async function loadBlockTexture(blockState) {
+    if (!blockState) {
+      return null;
+    }
+    const key = String(blockState).trim();
+    if (!key) {
+      return null;
+    }
+    if (!preview3d.textureCache.has(key)) {
+      const promise = new Promise(resolve => {
+        new THREE.TextureLoader().load(
+          `/api/block-texture?style=flat&block=${encodeURIComponent(key)}`,
+          texture => {
+            texture.magFilter = THREE.NearestFilter;
+            texture.minFilter = THREE.NearestFilter;
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            if ("colorSpace" in texture && THREE.SRGBColorSpace) {
+              texture.colorSpace = THREE.SRGBColorSpace;
+            }
+            resolve(texture);
+          },
+          undefined,
+          () => resolve(null)
+        );
+      });
+      preview3d.textureCache.set(key, promise);
+    }
+    return preview3d.textureCache.get(key);
+  }
+
+  /** 地形网格：紧凑数据 [x,y,z,color]*，每个采样列一个 step×1×step 实例。 */
+  function makeTerrainMesh(flat, step = 1, brightness = 0.98) {
+    if (!flat || flat.length === 0) {
+      return null;
+    }
+    const count = flat.length / 4;
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshLambertMaterial();
+    const mesh = new THREE.InstancedMesh(geometry, material, count);
+    const matrices = mesh.instanceMatrix.array;
+    const colors = new Float32Array(count * 3);
+    const color = new THREE.Color();
+    for (let i = 0; i < count; i += 1) {
+      const base = i * 4;
+      const o = i * 16;
+      matrices[o] = step;
+      matrices[o + 5] = 1;
+      matrices[o + 10] = step;
+      matrices[o + 12] = flat[base] + step / 2;
+      matrices[o + 13] = flat[base + 1] + 0.5;
+      matrices[o + 14] = flat[base + 2] + step / 2;
+      matrices[o + 15] = 1;
+      color.setHex(flat[base + 3] >>> 0);
+      colors[i * 3] = Math.min(1, color.r * brightness);
+      colors[i * 3 + 1] = Math.min(1, color.g * brightness);
+      colors[i * 3 + 2] = Math.min(1, color.b * brightness);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(colors, 3);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+    return mesh;
+  }
+
+  /**
+   * 建筑网格（紧凑盒子格式 [x,y,z,sx,sy,sz,blockIdx]*）：一个轴对齐盒子一个实例（scale=sx,sy,sz），
+   * 服务端已把相邻同属性竖直游程贪心合并成盒子，实例数约为逐游程的 1/5。
+   * 通过每实例 aBoxSize 属性在着色器里按面平铺 UV：侧面 v 按高度、u 按水平跨度，顶底面按 sx×sz，贴图保持 1:1。
+   * 大场景按 256×256 列分块：每块独立 InstancedMesh + 手动包围球，three.js 视锥剔除只画相机视野内的块
+   * （大模型相机贴脸看局部时，画幅从全场景数千万实例降到视野内几百万）。
+   */
+  const BUILDING_CHUNK_SIZE = 256;
+  const BUILDING_CHUNK_MIN_RUNS = 1_000_000;
+
+  /**
+   * 构建建筑网格。runs 为全量紧凑数据，from/to（元素下标，含头不含尾）限定本次要用的
+   * 游程区间——多模型时每个模型各建一份网格但共享同一份 runs，避免大数组反复切片拷贝。
+   * 游程下标（itemRuns / chunk 分桶）保持全量绝对下标，读取处直接 runs[i] 即可。
+   */
+  async function makeTexturedBuildingMesh(runs, blockTable, opacity = 1, progressLabel = "构建方块网格", from = 0, to = runs ? runs.length : 0) {
+    if (!runs || to <= from) {
+      return null;
+    }
+    const stride = 7;
+    const totalRuns = Math.floor((to - from) / stride);
+    const chunked = totalRuns > BUILDING_CHUNK_MIN_RUNS;
+    const tableSize = Math.max(1, blockTable.length);
+    const counts = new Uint32Array(tableSize);
+    for (let i = from + 6; i < to; i += stride) {
+      counts[runs[i]] += 1;
+    }
+    // 单趟分桶：之后每种方块只遍历自己的盒子，避免「方块种数 × 总盒子」的双重循环
+    const buckets = new Array(tableSize);
+    for (let b = 0; b < tableSize; b += 1) {
+      if (counts[b]) {
+        buckets[b] = new Uint32Array(counts[b]);
+      }
+    }
+    const fills = new Uint32Array(tableSize);
+    for (let i = from + 6, run = Math.floor(from / stride); i < to; i += stride, run += 1) {
+      const b = runs[i];
+      buckets[b][fills[b]++] = run;
+    }
+
+    const group = new THREE.Group();
+    const color = new THREE.Color();
+    // 并行预取全部方块纹理：几十种方块逐个串行请求要几十个往返，大模型预览时很明显
+    const textures = await Promise.all(blockTable.map(entry => loadBlockTexture(String((entry || {}).block || ""))));
+    // 进度按盒子数而不是方块种类计：占比最大的方块一种就有几百万盒子，
+    // 按种类计会长时间停在某一格（如 89/94），看起来像卡死
+    const reportEvery = Math.max(20000, Math.ceil(totalRuns / 200));
+    let runsDone = 0;
+
+    /** 建一个 InstancedMesh：itemRuns 是盒子下标数组，bounds 是可选的块包围盒 [minX,minY,minZ,maxX,maxY,maxZ]。 */
+    async function buildChunkMesh(entry, texture, material, itemRuns, bounds) {
+      const instanceCount = itemRuns.length;
+      const geometry = new THREE.BoxGeometry(1, 1, 1);
+      const boxSizes = new Float32Array(instanceCount * 3);
+      geometry.setAttribute("aBoxSize", new THREE.InstancedBufferAttribute(boxSizes, 3));
+      const mesh = new THREE.InstancedMesh(geometry, material, instanceCount);
+      const matrices = mesh.instanceMatrix.array;
+      for (let n = 0; n < instanceCount; n += 1) {
+        const i = itemRuns[n] * stride;
+        const x = runs[i];
+        const y = runs[i + 1];
+        const z = runs[i + 2];
+        const sx = Math.max(1, runs[i + 3]);
+        const sy = Math.max(1, runs[i + 4]);
+        const sz = Math.max(1, runs[i + 5]);
+        const o = n * 16;
+        matrices[o] = sx;
+        matrices[o + 5] = sy;
+        matrices[o + 10] = sz;
+        matrices[o + 12] = x + sx / 2;
+        matrices[o + 13] = y + sy / 2;
+        matrices[o + 14] = z + sz / 2;
+        matrices[o + 15] = 1;
+        boxSizes[n * 3] = sx;
+        boxSizes[n * 3 + 1] = sy;
+        boxSizes[n * 3 + 2] = sz;
+        if (!texture) {
+          color.setHex((entry.color || 0) >>> 0);
+          mesh.setColorAt(n, color);
+        }
+        // 大方块（百万盒子/种）构建期间让出主线程，进度条持续刷新
+        runsDone += 1;
+        if (runsDone % reportEvery === 0) {
+          const ratio = runsDone / totalRuns;
+          setPreviewProgress(ratio, `${progressLabel} ${Math.floor(ratio * 100)}%`);
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) {
+        mesh.instanceColor.needsUpdate = true;
+      }
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      // 分块模式：手动包围球驱动视锥剔除；非分块模式沿用全量渲染（场景小时一次 draw 最快）
+      if (chunked && bounds) {
+        const cx = (bounds[0] + bounds[3]) / 2;
+        const cy = (bounds[1] + bounds[4]) / 2;
+        const cz = (bounds[2] + bounds[5]) / 2;
+        const dx = bounds[3] - bounds[0];
+        const dy = bounds[4] - bounds[1];
+        const dz = bounds[5] - bounds[2];
+        const radius = Math.sqrt(dx * dx + dy * dy + dz * dz) / 2;
+        // 直接给 InstancedMesh 的 boundingSphere 赋精确的世界包围球。
+        // r169 里它是普通实例属性（默认 null），Frustum.intersectsObject 见它非空就
+        // 跳过 computeBoundingSphere()，直接用这个球（经单位矩阵）做视锥剔除。
+        // 千万不能改 geometry.boundingSphere：computeBoundingSphere 会把几何体的包围球
+        // 当初始值，逐实例用实例矩阵再变换并 union——单位盒几何体被矩阵缩放成世界坐标后，
+        // 世界大球再套实例矩阵会产生中心漂移的巨大球，导致某些 chunk 在缩放/旋转时被误剔除。
+        mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, cy, cz), radius);
+        mesh.frustumCulled = true;
+      } else {
+        mesh.frustumCulled = false;
+      }
+      mesh.matrixAutoUpdate = false;
+      mesh.userData.previewRole = "building";
+      mesh.userData.blockState = String(entry.block || "");
+      mesh.userData.paletteBlock = normalizePaletteBlockValue(String(entry.block || ""));
+      group.add(mesh);
+    }
+
+    for (let blockIndex = 0; blockIndex < blockTable.length; blockIndex += 1) {
+      const instanceCount = counts[blockIndex];
+      if (!instanceCount) {
+        continue;
+      }
+      const entry = blockTable[blockIndex] || {};
+      const texture = textures[blockIndex];
+
+      const material = new THREE.MeshLambertMaterial({
+        transparent: opacity < 1,
+        opacity
+      });
+      if (texture) {
+        material.map = texture;
+        // 按面平铺 UV：侧面 v 按盒子高度、u 按水平跨度，顶底面按 sx×sz（纹理 RepeatWrapping 下 1:1 平铺）
+        material.onBeforeCompile = (shader) => {
+          shader.vertexShader = "attribute vec3 aBoxSize;\n" + shader.vertexShader.replace(
+            "#include <uv_vertex>",
+            `#include <uv_vertex>
+             #ifdef USE_MAP
+               vec3 aBoxNormal = abs(normal);
+               vec2 aBoxTile = aBoxNormal.y > 0.5 ? vec2(aBoxSize.x, aBoxSize.z)
+                 : (aBoxNormal.x > 0.5 ? vec2(aBoxSize.z, aBoxSize.y) : vec2(aBoxSize.x, aBoxSize.y));
+               vMapUv *= aBoxTile;
+             #endif`
+          );
+        };
+        material.customProgramCacheKey = () => "boxSizeUv";
+      }
+
+      const bucket = buckets[blockIndex];
+      if (!chunked) {
+        const all = new Array(bucket.length);
+        for (let bi = 0; bi < bucket.length; bi += 1) {
+          all[bi] = bucket[bi];
+        }
+        await buildChunkMesh(entry, texture, material, all, null);
+        continue;
+      }
+
+      // 分块模式：该方块的盒子按 256×256 列分桶，每块一个 mesh（按盒子最小角所在块归属）
+      const chunkBuckets = new Map();
+      for (let bi = 0; bi < bucket.length; bi += 1) {
+        const runIndex = bucket[bi];
+        const i = runIndex * stride;
+        const key = Math.floor(runs[i] / BUILDING_CHUNK_SIZE) * 65536
+          + Math.floor(runs[i + 2] / BUILDING_CHUNK_SIZE);
+        let list = chunkBuckets.get(key);
+        if (!list) {
+          list = [];
+          chunkBuckets.set(key, list);
+        }
+        list.push(runIndex);
+      }
+      for (const list of chunkBuckets.values()) {
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        for (let n = 0; n < list.length; n += 1) {
+          const i = list[n] * stride;
+          const x = runs[i];
+          const y = runs[i + 1];
+          const z = runs[i + 2];
+          const sx = Math.max(1, runs[i + 3]);
+          const sy = Math.max(1, runs[i + 4]);
+          const sz = Math.max(1, runs[i + 5]);
+          if (x < minX) { minX = x; }
+          if (x + sx > maxX) { maxX = x + sx; }
+          if (y < minY) { minY = y; }
+          if (y + sy > maxY) { maxY = y + sy; }
+          if (z < minZ) { minZ = z; }
+          if (z + sz > maxZ) { maxZ = z + sz; }
+        }
+        await buildChunkMesh(entry, texture, material, list, [minX, minY, minZ, maxX, maxY, maxZ]);
+      }
+    }
+    // 所有方块构建完：进度直接归 100%。最后一批盒子不一定正好落在 reportEvery 取模整点上，
+    // 若全靠取模上报，界面会一直停在 98/99% 直到收尾阶段结束。
+    // 仅完整预览流程（previewBusy）才显示：切「显示模型」等直接重渲染路径不弹进度条
+    if (previewBusy) {
+      setPreviewProgress(1, `${progressLabel} 100%`);
+    }
+    return group.children.length > 0 ? group : null;
+  }
+
+  function shadeColor(hex, factor) {
+    const color = new THREE.Color(hex >>> 0);
+    color.r = Math.min(1, color.r * factor);
+    color.g = Math.min(1, color.g * factor);
+    color.b = Math.min(1, color.b * factor);
+    return color;
+  }
+
+  function createTargetMarker(meta) {
+    if (!Number.isFinite(meta.targetX) || !Number.isFinite(meta.targetZ)) {
+      return null;
+    }
+
+    const baseY = Number.isFinite(meta.targetY) ? meta.targetY : 0;
+    const topY = Number.isFinite(meta.buildingMaxY)
+      ? Math.max(baseY + 8, meta.buildingMaxY + 10)
+      : baseY + 32;
+
+    const marker = new THREE.Group();
+    const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(meta.targetX, baseY, meta.targetZ),
+      new THREE.Vector3(meta.targetX, topY, meta.targetZ)
+    ]);
+    const line = new THREE.Line(
+      lineGeometry,
+      new THREE.LineBasicMaterial({ color: 0x58a6ff })
+    );
+    marker.add(line);
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(3.2, 0.35, 12, 36),
+      new THREE.MeshBasicMaterial({ color: 0x58a6ff })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(meta.targetX, baseY + 0.15, meta.targetZ);
+    marker.add(ring);
+
+    return marker;
+  }
+
+  async function renderPreview(data) {
+    ensurePreviewRenderer();
+    const preservedCameraOffset = capturePreviewCameraOffset();
+    clearPreviewGroup();
+
+    // 大结果解析为 Int32Array（V8 单字符串上限限制，不能整体 JSON.parse）；数组与 typed array 都兼容
+    const terrainFlat = Array.isArray(data.terrain) || data.terrain instanceof Int32Array ? data.terrain : [];
+    const buildingRuns = Array.isArray(data.building) || data.building instanceof Int32Array ? data.building : [];
+    const blockTable = Array.isArray(data.blockTable) ? data.blockTable : [];
+    const meta = data.meta || {};
+
+    const group = new THREE.Group();
+    const terrainMesh = makeTerrainMesh(terrainFlat, meta.terrainStep || 1, 0.98);
+    if (terrainMesh) {
+      terrainMesh.userData.previewRole = "terrain";
+      group.add(terrainMesh);
+    }
+
+    // 场景原点：建筑游程/枢轴位置都是「世界坐标 - 原点」，轴线写回表单时要换算回世界坐标
+    preview3d.previewOrigin = {
+      x: Number.isFinite(meta.originX) ? meta.originX : 0,
+      y: Number.isFinite(meta.originY) ? meta.originY : 0,
+      z: Number.isFinite(meta.originZ) ? meta.originZ : 0
+    };
+
+    // 模型网格挂进轴线枢轴组。多模型时按 meta.modelRunStarts 把建筑游程按模型分段，
+    // 每个模型一个枢轴（锚定各自包围盒中心）：点选/轴线只作用于单个模型；
+    // 单模型或旧缓存没有分段信息时退回整建筑共用一个枢轴（轴线作用于全部模型的组合中心）
+    let buildingCenter = new THREE.Vector3();
+    const pivot = preview3d.gizmoPivot;
+    const modelCount = Number(meta.modelCount) || 0;
+    const runStarts = Array.isArray(meta.modelRunStarts) ? meta.modelRunStarts : null;
+    const perModel = !!(modelCount > 1 && runStarts && runStarts.length === modelCount + 1);
+    if (ui.showModel.checked && pivot) {
+      if (perModel) {
+        preview3d.perModelPivots = true;
+        for (let i = 0; i < modelCount; i += 1) {
+          const from = runStarts[i] * 7;
+          const to = runStarts[i + 1] * 7;
+          const mesh = to > from
+            ? await makeTexturedBuildingMesh(buildingRuns, blockTable, 0.92, `构建方块网格(模型${i + 1})`, from, to)
+            : null;
+          const modelPivot = new THREE.Group();
+          if (mesh) {
+            const bounds = new THREE.Box3().setFromObject(mesh);
+            const center = bounds.isEmpty() ? new THREE.Vector3() : bounds.getCenter(new THREE.Vector3());
+            mesh.position.copy(center).negate();
+            modelPivot.position.copy(center);
+            modelPivot.userData.center = center;
+            // 存枢轴本地空间的包围盒（几何包围盒再减去中心）：之后 world = localBounds × pivot.matrixWorld 才正确
+            modelPivot.userData.localBounds = bounds.isEmpty()
+              ? bounds
+              : bounds.clone().translate(mesh.position);
+            modelPivot.add(mesh);
+          }
+          preview3d.modelPivots.push(modelPivot);
+          pivot.add(modelPivot);
+        }
+      } else {
+        const buildingMesh = await makeTexturedBuildingMesh(buildingRuns, blockTable, 0.92);
+        if (buildingMesh) {
+          const bounds = new THREE.Box3().setFromObject(buildingMesh);
+          if (!bounds.isEmpty()) {
+            buildingCenter = bounds.getCenter(new THREE.Vector3());
+          }
+          pivot.position.copy(buildingCenter);
+          pivot.quaternion.identity();
+          pivot.rotation.set(0, 0, 0);
+          buildingMesh.position.copy(buildingCenter).negate();
+          preview3d.gizmoCenter = buildingCenter;
+          pivot.add(buildingMesh);
+        }
+      }
+    }
+
+    const hasBuildingMesh = !!(pivot && pivot.children.length);
+    if (Number.isFinite(meta.buildingMinX) && !hasBuildingMesh) {
+      // 无模型网格时（「显示模型」未勾选）才画蓝色占位框作参考；有模型时画面本身就是范围，不再叠加
+      const box = new THREE.Box3(
+        new THREE.Vector3(meta.buildingMinX, meta.buildingMinY, meta.buildingMinZ),
+        new THREE.Vector3(meta.buildingMaxX + 1, meta.buildingMaxY + 1, meta.buildingMaxZ + 1)
+      );
+      group.add(new THREE.Box3Helper(box, 0x58a6ff));
+    }
+
+    const targetMarker = createTargetMarker(meta);
+    if (targetMarker) {
+      group.add(targetMarker);
+    }
+
+    // 网格构建完成：提示进入收尾阶段。列索引不再在这里同步构建——
+    // 超大模型（数千万体素）的列索引要建几秒到十几秒，之前会卡在
+    // 「构建方块网格 98%」很久且模型还没上屏；改为首次拾取/悬停时惰性构建。
+    // 仅完整预览流程显示收尾提示，直接重渲染路径维持不弹进度条
+    if (previewBusy) {
+      setPreviewProgress(null, "整理预览场景...");
+    }
+    preview3d.blockTable = blockTable;
+    preview3d.buildingBoxes = buildingRuns;
+    preview3d.columnIndex = null;
+    preview3d.group = group;
+    preview3d.scene.add(group);
+    // 轴线基准：记录渲染时刻的模型参数，并按当前模式重新挂载轴线（如已开启）
+    preview3d.gizmoBase = captureGizmoBase();
+    preview3d.gizmoDirty = false;
+    attachGizmoIfPossible();
+    updateGizmoButtons();
+    ui.previewEmpty.style.display = terrainFlat.length || buildingRuns.length ? "none" : "flex";
+    fitPreviewCamera(group, meta, preservedCameraOffset);
+    requestPreviewRender();
+    // 渲染完成自动弹出悬浮窗：悬浮窗从 hidden 恢复时舞台尺寸为 0，
+    // setPreviewPopover 内部会 rAF 重算画布并补画一帧；已打开时不重复处理
+    if (!previewPopoverOpen) {
+      setPreviewPopover(true);
+    }
+    // 记录本次渲染各模型的放置坐标快照：之后编辑坐标时按差值实时平移已渲染网格，
+    // 无需重新体素化（场景坐标 = 世界坐标 - 原点，坐标平移可直接作用到枢轴组上）
+    preview3d.renderedCoords = modelState.map(model => ({
+      x: Number(model.x) || 0, y: Number(model.y) || 0, z: Number(model.z) || 0
+    }));
+  }
+
+  function capturePreviewCameraOffset() {
+    if (!preview3d.group || !preview3d.camera || !preview3d.controls) {
+      return null;
+    }
+    return preview3d.camera.position.clone().sub(preview3d.controls.target.clone());
+  }
+
+  function fitPreviewCamera(group, meta = {}, preservedOffset = null) {
+    const box = new THREE.Box3().setFromObject(group);
+    // 模型网格挂在轴线枢轴组里（不在 group 内），取景时并入枢轴包围盒
+    if (preview3d.gizmoPivot && preview3d.gizmoPivot.children.length) {
+      box.union(new THREE.Box3().setFromObject(preview3d.gizmoPivot));
+    }
+    if (box.isEmpty()) {
+      preview3d.controls.target.set(0, 0, 0);
+      preview3d.camera.position.set(80, 90, 80);
+      return;
+    }
+
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const focusX = Number.isFinite(meta.targetX) ? meta.targetX : center.x;
+    const focusZ = Number.isFinite(meta.targetZ) ? meta.targetZ : center.z;
+    const focusY = Number.isFinite(meta.surfaceY)
+      ? meta.surfaceY
+      : (Number.isFinite(meta.buildingMinY) && Number.isFinite(meta.buildingMaxY)
+          ? (meta.buildingMinY + meta.buildingMaxY) / 2
+          : center.y);
+
+    const footprint = Math.max(size.x, size.z, 24);
+    const modelVisible = ui.showModel && ui.showModel.checked;
+    const vertical = modelVisible && Number.isFinite(meta.surfaceY) && Number.isFinite(meta.buildingMaxY)
+      ? Math.max(48, meta.buildingMaxY - meta.surfaceY)
+      : (Number.isFinite(meta.terrainMaxY) && Number.isFinite(meta.terrainMinY)
+          ? Math.max(48, meta.terrainMaxY - meta.terrainMinY)
+          : Math.max(size.y, 48));
+    const radius = Math.max(footprint * 0.85, vertical * 0.6, 160);
+
+    preview3d.controls.target.set(focusX, focusY, focusZ);
+    const validPreservedOffset = preservedOffset && preservedOffset.lengthSq() > 1;
+    if (validPreservedOffset) {
+      preview3d.camera.position.copy(
+        new THREE.Vector3(focusX, focusY, focusZ).add(preservedOffset)
+      );
+    } else {
+      preview3d.camera.position.set(
+        focusX + radius * 0.35,
+        focusY + radius * 1.4,
+        focusZ + radius * 0.35
+      );
+    }
+    const viewDistance = preview3d.camera.position.distanceTo(preview3d.controls.target);
+    preview3d.camera.far = Math.max(6000, radius * 14, viewDistance * 24);
+    preview3d.camera.updateProjectionMatrix();
+    preview3d.controls.update();
+  }
+
+  async function boot() {
+    // 恢复上次主题（默认夜间；localStorage 不可用时保持默认）
+    let savedTheme = "dark";
+    try {
+      savedTheme = localStorage.getItem("model2mc-theme") || "dark";
+    } catch (error) {
+      // 忽略
+    }
+    applyTheme(savedTheme);
+    initPreviewPopoverWindow();
+    bindEvents();
+    if (currentMode === "write") {
+      ensurePreviewRenderer();
+    }
+    await loadConfig();
+    await fetchStatus();
+  }
+
+  boot().catch(handleError);
+</script>
+</body>
+</html>
